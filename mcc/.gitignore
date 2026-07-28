@@ -1,0 +1,8 @@
+/target/
+/node_modules/
+/src-tauri/target/
+/dist/
+*.deb
+.DS_Store
+.env
+.env.*

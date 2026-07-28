@@ -1,0 +1,21 @@
+{
+  "name": "3dl-macro-command-center",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "tauri": "tauri",
+    "probe": "cargo run -p cyberdeck-probe --",
+    "test:js": "node test/smoke.mjs",
+    "test:rust": "cargo test -p cyberdeck-ble"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-shell": "^2"
+  }
+}

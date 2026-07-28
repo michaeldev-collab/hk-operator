@@ -1,0 +1,25 @@
+[package]
+name = "mcc-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "3DL Macro Command Center — Cyberdeck Pad desktop companion"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+cyberdeck-ble = { path = "../crates/cyberdeck-ble" }
+anyhow = { workspace = true }
+dirs = "6"
+open = "5"
+arboard = "3"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

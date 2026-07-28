@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>3DL Macro Command Center</title>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <link rel="stylesheet" href="./styles.css?v=6p6" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo">▣</span>
+        <div>
+          <h1>3DL Macro Command Center</h1>
+          <p class="sub">Cyberdeck Pad companion — HID + BLE macros · UI 6p6</p>
+        </div>
+      </div>
+      <div class="actions">
+        <button id="addBtn" class="btn primary">+ New action</button>
+        <button id="exportBtn" class="btn" title="Download all actions as JSON">Export</button>
+        <button id="exportProfileBtn" class="btn" title="Save portable profile under ~/.config/.../profiles/">Export profile</button>
+        <button id="importProfileBtn" class="btn" title="Load a profile JSON from disk">Import profile</button>
+        <label class="btn" title="Replace actions from a JSON file">
+          Import<input id="importInput" type="file" accept="application/json" hidden />
+        </label>
+      </div>
+    </header>
+
+    <section id="padPanel" class="pad-panel">
+      <div class="pad-head">
+        <div>
+          <h2>Cyberdeck Pad · 6 presets</h2>
+          <p id="padStatusLine" class="sub">Checking BlueZ…</p>
+          <p class="sub pad-preset-count">Name presets below — click a title to rename · P4–P6 use dual LEDs</p>
+        </div>
+        <div class="pad-actions">
+          <button id="padRefreshBtn" class="btn">Refresh</button>
+          <button id="padSyncBtn" class="btn primary">Sync to pad</button>
+          <button id="padListenBtn" class="btn">Listen for macros</button>
+        </div>
+      </div>
+
+      <!-- Preset columns are built by app.js (PRESET_COUNT) so a stale WebView shell cannot stick at 3. -->
+      <div id="padGridMount"></div>
+
+      <p id="padHint" class="pad-hint">
+        B1 cycles presets on the pad. Preset 3 stays Ctrl+Alt+1/2/3 (pick MCC action here).
+        Commands need Allow before they run.
+      </p>
+    </section>
+
+    <section id="composerPanel" class="pad-panel composer-panel">
+      <div class="pad-head">
+        <div>
+          <h2>Slash composer · ai</h2>
+          <p class="sub">Bind an action of type <code>composer</code> (value <code>ai</code>) to a pad slot. Each press pastes the next token.</p>
+        </div>
+        <div class="pad-actions">
+          <button id="composerResetBtn" class="btn" type="button">Reset cycle</button>
+          <button id="composerSaveBtn" class="btn primary" type="button">Save composer</button>
+        </div>
+      </div>
+      <label class="composer-label">Commands (one per line)
+        <textarea id="composerCommands" rows="4" spellcheck="false"></textarea>
+      </label>
+      <div class="composer-row">
+        <label>Timeout ms<input id="composerTimeout" type="number" min="500" step="100" /></label>
+        <label>Separator<input id="composerSeparator" maxlength="8" /></label>
+      </div>
+      <p class="pad-hint">Idle timeout resets to the first command. Enter-key reset is not hooked yet.</p>
+    </section>
+
+    <section class="controls">
+      <input id="search" class="search" type="search" aria-label="Search actions by name, content, or tags" placeholder="Search name, content, tags…  (Enter copies top result)" />
+      <select id="categoryFilter" class="select" aria-label="Filter by category"></select>
+      <select id="typeFilter" class="select" aria-label="Filter by type"></select>
+      <button id="favToggle" class="btn" title="Show favorites only" aria-pressed="false">★ Favorites</button>
+      <span id="count" class="count"></span>
+    </section>
+
+    <main id="grid" class="grid"></main>
+
+    <dialog id="dialog" class="dialog">
+      <form id="form" method="dialog">
+        <h2 id="formTitle">New action</h2>
+        <label>Name<input id="f_name" required /></label>
+        <div class="row">
+          <label>Category<select id="f_category"></select></label>
+          <label>Type<select id="f_type"></select></label>
+        </div>
+        <label>Description<input id="f_description" /></label>
+        <label>Content / value<textarea id="f_value" rows="4" required></textarea></label>
+        <label>Tags (comma-separated)<input id="f_tags" /></label>
+        <label class="check"><input id="f_favorite" type="checkbox" /> Favorite</label>
+        <p id="formError" class="form-error"></p>
+        <div class="form-foot">
+          <button type="button" id="cancelBtn" class="btn">Cancel</button>
+          <button type="submit" class="btn primary">Save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="slotDialog" class="dialog">
+      <form id="slotForm" method="dialog">
+        <h2 id="slotTitle">Edit slot</h2>
+        <p id="s_bridgeNote" class="form-hint" hidden></p>
+        <label>Label<input id="s_label" maxlength="23" /></label>
+        <label id="s_modeRow">Mode
+          <select id="s_mode">
+            <option value="0">HID (type on pad)</option>
+            <option value="1">Macro (desktop runs action)</option>
+          </select>
+        </label>
+        <fieldset id="s_hidFields">
+          <legend>HID</legend>
+          <label class="check"><input type="checkbox" id="s_mod_ctrl" value="1" /> Ctrl</label>
+          <label class="check"><input type="checkbox" id="s_mod_shift" value="2" /> Shift</label>
+          <label class="check"><input type="checkbox" id="s_mod_alt" value="4" /> Alt</label>
+          <label class="check"><input type="checkbox" id="s_mod_gui" value="8" /> Gui</label>
+          <label>Key code (hex or decimal)<input id="s_key" placeholder="0x28 = Enter" /></label>
+        </fieldset>
+        <fieldset id="s_macroFields" hidden>
+          <legend>MCC action</legend>
+          <label>Action<select id="s_action"></select></label>
+        </fieldset>
+        <div class="form-foot">
+          <button type="button" id="slotCancelBtn" class="btn">Cancel</button>
+          <button type="submit" class="btn primary">Apply</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script type="module" src="./app.js?v=6p6"></script>
+  </body>
+</html>
