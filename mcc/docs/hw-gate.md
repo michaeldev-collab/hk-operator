@@ -17,7 +17,7 @@ Per operator: **do not upload** while a different ESP is on serial.
 3. Explicitly approve upload, then:
    ```bash
    arduino-cli upload -p <PORT> --fqbn esp32:esp32:esp32c6 \
-     /run/media/stitch/data3/Operating/pi-iot/esp32/ble-hid-hotkeys/ble-hid-hotkey-ble-config
+     ../firmware (repo root)
    ```
 4. Re-pair if needed → `cyberdeck-probe info` should print `Cyberdeck Pad Hybrid v0.1.0`.
 5. Flip a slot to macro → `cyberdeck-probe listen` / MCC **Listen for macros**.

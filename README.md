@@ -49,7 +49,7 @@ Bind an action of type `composer` with value `ai`. Each pad press pastes the nex
 token from the composer list (timeout resets to the first command).
 
 ## License
-Not chosen yet — candidate tradeoffs: **MIT**, **Apache-2.0**, **GPL-3.0**. Decide before publishing.
+[MIT](./LICENSE). (Apache-2.0 was the patent-grant alternative; GPL-3.0 was rejected for portfolio reuse friction.)
 
 ## Status
 Portfolio scaffold. Original working trees remain the recovery source until this

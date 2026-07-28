@@ -1,8 +1,8 @@
 # Cyberdeck Pad BLE protocol (host side)
 
-Canonical UUIDs and binary layout for Macro Command Center / probe CLI.
+Canonical UUIDs and binary layout for HK Operator MCC / probe CLI.
 
-Firmware: `/run/media/stitch/data3/Operating/pi-iot/esp32/ble-hid-hotkeys/ble-hid-hotkey-ble-config/`  
+Firmware: [`../../firmware/`](../../firmware/)  
 Info string (v0.2+): `Cyberdeck Pad Hybrid v0.2.0`
 
 ## UUIDs

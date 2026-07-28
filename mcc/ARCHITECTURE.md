@@ -24,7 +24,7 @@ Why not a second BLE connection:
 src/*.js/html/css  ──invoke──▶  src-tauri (Rust)
                                     │
                                     ├── cyberdeck-ble (BlueZ GATT)
-                                    ├── ~/.config/.../store.json
+                                    ├── ~/.config/hk-operator/store.json
                                     └── shell / clipboard / open
 
 Firmware (ESP32-C6)

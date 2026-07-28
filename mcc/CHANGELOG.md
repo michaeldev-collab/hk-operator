@@ -1,13 +1,13 @@
 # Changelog
 
-All notable changes to 3DL Macro Command Center.
+All notable changes to HK Operator MCC.
 
 ## 0.2.0 — Hybrid BLE desktop
 - Re-anchored on Cyberdeck Pad hybrid firmware (`ble-hid-hotkey-ble-config`).
 - Added `cyberdeck-ble` + `cyberdeck-probe` (BlueZ GATT on bonded HID link).
 - Added Tauri 2 desktop shell: pad 3×3 grid, HID vs macro editors, sync slots,
   MacroEvent listener, action execution with command allow-list.
-- Persistence moved to `~/.config/3dl-macro-command-center/store.json` in desktop
+- Persistence moved to `~/.config/hk-operator/store.json` in desktop
   mode (browser mode still uses localStorage).
 - Seeded Cyberdeck launcher macros (sysmon / task-app / vscode scripts).
 - Docs rewritten pad-first; WiFi portal is optional firmware fallback.

@@ -3,7 +3,7 @@
 Portable MCC profile JSON files for import via **Import profile** (desktop) or copy into:
 
 ```text
-~/.config/3dl-macro-command-center/profiles/
+~/.config/hk-operator/profiles/
 ```
 
 - [`dev.json`](./dev.json) — sanitized demo (composer + URL). No private paths or 3DL-internal slash commands.

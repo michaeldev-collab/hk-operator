@@ -1,7 +1,7 @@
 # Cyberdeck Pad — Hybrid BLE config
 
 Drop-in evolution of `ble-hid-hotkey.ino` / `ble-hid-hotkey-wifi`. Adds a custom
-GATT service on the **same BLE link** as the HID keyboard so Macro Command Center
+GATT service on the **same BLE link** as the HID keyboard so HK Operator MCC
 (desktop) can sync slots and receive macro fire events — no second connection,
 no WiFi AP for daily use.
 
@@ -52,12 +52,12 @@ blue LED double-blinks then restores the preset LED pattern.
 ## Flash
 ```bash
 arduino-cli compile --fqbn esp32:esp32:esp32c6 \
-  --libraries /run/media/stitch/data3/Operating/pi-iot/libraries \
-  ble-hid-hotkey-ble-config
+  --libraries ~/Arduino/libraries \
+  .
 
-# Cyberdeck Pad is usually ACM1 — do NOT flash ACM0 (other C6 board) unless sure.
+# Pick the Cyberdeck Pad serial device — do NOT flash the wrong board.
 arduino-cli upload -p /dev/ttyACM1 --fqbn esp32:esp32:esp32c6 \
-  ble-hid-hotkey-ble-config
+  .
 ```
 
 (Adjust port. Default partition is usually fine — no WiFi stack.)
@@ -67,6 +67,6 @@ Compile with `-DENABLE_WIFI_FALLBACK=1` to restore long-press B3 AP portal.
 Default build has WiFi **off**; short-press B3 only toggles LEDs.
 
 ## Desktop
-See `3dl-macro-command-center` — `probe/` CLI and Tauri app use these UUIDs via
+See [`../mcc/`](../mcc/) — `probe/` CLI and Tauri app use these UUIDs via
 BlueZ on the already-bonded HID connection. MCC expects **18** slots after this
 firmware is flashed.

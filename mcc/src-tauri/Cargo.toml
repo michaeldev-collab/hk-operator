@@ -3,7 +3,7 @@ name = "mcc-desktop"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "3DL Macro Command Center — Cyberdeck Pad desktop companion"
+description = "HK Operator MCC — Cyberdeck Pad desktop companion"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

@@ -5,7 +5,7 @@ manual UI smoke test (5 minutes in a browser).
 
 ## 1. Automated logic smoke test
 ```bash
-cd 3dl-macro-command-center
+cd hk-operator/mcc
 node test/smoke.mjs
 ```
 **Covers:** constants, action validation (good + each failure mode), the URL
@@ -25,7 +25,7 @@ whitespace URL cases, and no-tags normalization (added after the review pass).
 ## 2. Manual UI smoke test
 Start the app:
 ```bash
-cd 3dl-macro-command-center/src
+cd hk-operator/mcc/src
 python3 -m http.server 8000
 # open http://localhost:8000
 ```
@@ -56,7 +56,7 @@ Run through these. Each should pass:
 ## 3. Reset to seed (if needed)
 In the browser console:
 ```js
-localStorage.removeItem("3dl.macro.actions.v1"); location.reload();
+localStorage.removeItem("hk.operator.actions.v1"); location.reload();
 ```
 
 ## Known limitations (not failures)

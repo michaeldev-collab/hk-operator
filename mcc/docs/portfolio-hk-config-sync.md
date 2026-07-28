@@ -1,7 +1,7 @@
 # Portfolio project: HK Config Sync
 
 **Status:** design only — do not implement yet (planned next session).  
-**Parent product:** 3DL Macro Command Center + Cyberdeck Pad (hybrid BLE HID / GATT).  
+**Parent product:** HK Operator MCC + Cyberdeck Pad (hybrid BLE HID / GATT).  
 **Thesis:** configuration is data, not code — so the pad follows you across machines.
 
 ---
@@ -76,7 +76,7 @@ hk-mcc --import ./hk-config
 # Done.
 ```
 
-MCC today already persists `~/.config/3dl-macro-command-center/store.json`. This project generalizes that into **named profiles + sync**, without baking paths into firmware.
+MCC today already persists `~/.config/hk-operator/store.json`. This project generalizes that into **named profiles + sync**, without baking paths into firmware.
 
 ---
 

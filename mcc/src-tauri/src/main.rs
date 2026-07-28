@@ -1,4 +1,4 @@
-//! 3DL Macro Command Center — Tauri desktop shell (Linux / BlueZ).
+//! HK Operator MCC — Tauri desktop shell (Linux / BlueZ).
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -13,7 +13,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::Mutex;
 
-const APP_DIR: &str = "3dl-macro-command-center";
+const APP_DIR: &str = "hk-operator";
 const STORE_FILE: &str = "store.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

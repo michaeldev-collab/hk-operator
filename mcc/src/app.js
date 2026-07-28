@@ -11,7 +11,7 @@ import {
 } from "./lib.js";
 import { SEED_ACTIONS, SEED_PAD_BINDINGS } from "./seed.js";
 
-const STORAGE_KEY = "3dl.macro.actions.v1";
+const STORAGE_KEY = "hk.operator.actions.v1";
 const BTN_NAMES = ["B2", "B4", "B5"];
 
 /**
@@ -981,7 +981,7 @@ async function importProfileDisk() {
   }
   const path = prompt(
     "Path to profile JSON",
-    `${(window.__MCC_HOME_HINT || "~")}/.config/3dl-macro-command-center/profiles/dev.json`
+    `${(window.__MCC_HOME_HINT || "~")}/.config/hk-operator/profiles/dev.json`
   );
   if (!path) return;
   if (

@@ -23,7 +23,7 @@ function check(name, cond) {
   }
 }
 
-console.log("3DL Macro Command Center — smoke test\n");
+console.log("HK Operator MCC — smoke test\n");
 
 // 1. constants
 check("6 categories defined", CATEGORIES.length === 6);

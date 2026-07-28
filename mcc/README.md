@@ -1,4 +1,4 @@
-# 3DL Macro Command Center
+# HK Operator — Mission Control Center (MCC)
 
 Pad-first companion for the **Cyberdeck Pad** (ESP32 BLE HID hotkeys) plus a
 local action catalog (prompts, URLs, commands, paths).
@@ -8,9 +8,7 @@ Hybrid model:
 - **Macro slots** — pad notifies this desktop app over custom GATT on the
   **same** BlueZ link as the keyboard; the app runs the real action.
 
-Firmware foundation:
-`/run/media/stitch/data3/Operating/pi-iot/esp32/ble-hid-hotkeys/ble-hid-hotkey-ble-config/`
-
+Firmware: [`../firmware/`](../firmware/)  
 Protocol: [`protocol/PROTOCOL.md`](protocol/PROTOCOL.md)
 
 ## Stack
@@ -23,13 +21,13 @@ Protocol: [`protocol/PROTOCOL.md`](protocol/PROTOCOL.md)
 
 ## Desktop app
 ```bash
-cd ~/3dl-macro-command-center
+cd ~/hk-operator/mcc
 npm install
 npm run dev          # Tauri + UI
 ```
 
-Persistence: `~/.config/3dl-macro-command-center/store.json`
-(actions + `padBindings` + `allowedCommands`).
+Persistence: `~/.config/hk-operator/store.json`
+(actions + `padBindings` + `composers` + `allowedCommands`).
 
 **Commands never run silently** — click **Allow shell** (or confirm on first Run).
 
@@ -47,8 +45,8 @@ that existing connection — they do not open a second BLE link.
 ## Firmware (compile only until you approve flash)
 ```bash
 arduino-cli compile --fqbn esp32:esp32:esp32c6 \
-  --libraries /run/media/stitch/data3/Operating/pi-iot/libraries \
-  /run/media/stitch/data3/Operating/pi-iot/esp32/ble-hid-hotkeys/ble-hid-hotkey-ble-config
+  --libraries ~/Arduino/libraries \
+  ../firmware
 ```
 
 Do **not** `upload` until the correct ESP32-C6 is on the serial port.
@@ -60,19 +58,6 @@ is BLE-only.
 ```bash
 cd src && python3 -m http.server 8000
 ```
-Open http://localhost:8000 — actions work (copy/open); pad panel is hidden.
 
-## Tests
-```bash
-npm run test:js      # node test/smoke.mjs
-npm run test:rust    # cyberdeck-ble unit tests
-```
-
-## Layout
-```
-src/                 # UI (browser + Tauri frontendDist)
-src-tauri/           # Tauri shell + BLE/macro execution
-crates/cyberdeck-ble # BlueZ GATT helpers + slot pack/unpack
-probe/               # cyberdeck-probe CLI
-protocol/            # UUID + binary layout
-```
+## License
+MIT — see [`../LICENSE`](../LICENSE).

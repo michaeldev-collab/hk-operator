@@ -6,7 +6,7 @@ export const CATEGORIES = [
   "Terminal Commands",
   "Project Paths",
   "Cursor Prompts",
-  "3DL Prompts",
+  "Prompts",
   "Client/Admin Tools",
 ];
 

@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "3DL Macro Command Center",
+  "productName": "HK Operator",
   "version": "0.2.0",
-  "identifier": "com.threedesignlabs.macro-command-center",
+  "identifier": "dev.hkoperator.mcc",
   "build": {
     "frontendDist": "../src",
     "devUrl": "http://127.0.0.1:1420/?mcc=6p5",
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "3DL Macro Command Center",
+        "title": "HK Operator",
         "width": 1180,
         "height": 980,
         "resizable": true

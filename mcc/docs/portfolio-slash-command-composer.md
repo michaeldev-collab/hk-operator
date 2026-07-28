@@ -16,7 +16,7 @@ Press AI button → paste next `/command` in a cycle → type Space (or other se
 ## Interaction model
 
 ```text
-Press button → inserts /3dl-matrix
+Press button → inserts /help
 Press space
 Press button again → rotates → inserts next command
 Keep chaining until the prompt has the stack you want
@@ -27,9 +27,9 @@ Example sequence:
 
 | Press | Inserted token |
 | --- | --- |
-| 1 | `/3dl-matrix` |
+| 1 | `/help` |
 | (space) | separator |
-| 2 | `/3dl-matrix-killcritic` |
+| 2 | `/review` |
 | (space) | separator |
 | 3 | `/another-command` |
 
@@ -98,8 +98,8 @@ Target architecture: composer lives in **MCC** (Rust), driven by macro (or fire)
   "composers": {
     "ai": {
       "commands": [
-        "/3dl-matrix",
-        "/3dl-matrix-killcritic"
+        "/help",
+        "/review"
       ],
       "separator": " ",
       "timeoutMs": 4000,
