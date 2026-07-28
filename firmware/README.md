@@ -1,17 +1,22 @@
-# Cyberdeck Pad — Hybrid BLE config
+# Cybercat firmware — Hybrid BLE config
 
-Drop-in evolution of `ble-hid-hotkey.ino` / `ble-hid-hotkey-wifi`. Adds a custom
-GATT service on the **same BLE link** as the HID keyboard so HK Operator MCC
-(desktop) can sync slots and receive macro fire events — no second connection,
-no WiFi AP for daily use.
+Firmware for **Cybercat**, the physical controller for HK Operator. Drop-in
+evolution of `ble-hid-hotkey.ino` / `ble-hid-hotkey-wifi`. Adds a custom GATT
+service on the **same BLE link** as the HID keyboard so HK Operator MCC (desktop)
+can sync slots and receive macro fire events — no second connection, no WiFi AP
+for daily use.
 
-**Firmware id:** `Cyberdeck Pad Hybrid v0.2.0` — **6 presets** (18 slots).
+**Firmware id (compatibility):** `Cyberdeck Pad Hybrid v0.2.0` — **6 presets**
+(18 slots). BLE advertised name remains **`Cyberdeck Pad`**. Do not rename these
+without coordinating all bonded hosts and MCC/probe matchers.
+
+Hardware story: [`../docs/hardware-v1.md`](../docs/hardware-v1.md)
 
 ## Modes per slot
 | Mode | Value | Behavior |
 |------|-------|----------|
-| HID | `0` | Pad types `mod`+`key` (works with desktop app closed) |
-| Macro | `1` | Pad notifies `MacroEvent` `{presetIdx, actionIdx}`; desktop runs the action |
+| HID | `0` | Cybercat types `mod`+`key` (works with desktop app closed) |
+| Macro | `1` | Cybercat notifies `MacroEvent` `{presetIdx, actionIdx}`; desktop runs the action |
 
 ## Preset LEDs
 | Preset | Indicator |
@@ -55,7 +60,7 @@ arduino-cli compile --fqbn esp32:esp32:esp32c6 \
   --libraries ~/Arduino/libraries \
   .
 
-# Pick the Cyberdeck Pad serial device — do NOT flash the wrong board.
+# Pick the Cybercat serial device — do NOT flash the wrong board.
 arduino-cli upload -p /dev/ttyACM1 --fqbn esp32:esp32:esp32c6 \
   .
 ```

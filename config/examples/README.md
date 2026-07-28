@@ -1,6 +1,7 @@
 # Config examples
 
-Portable MCC profile JSON files for import via **Import profile** (desktop) or copy into:
+Portable HK Operator MCC profile JSON files for import via **Import profile**
+(desktop) or copy into:
 
 ```text
 ~/.config/hk-operator/profiles/

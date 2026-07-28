@@ -516,7 +516,7 @@ function ensurePadGridStructure() {
   }
 
   const title = panel?.querySelector(".pad-head h2");
-  if (title) title.textContent = `Cyberdeck Pad · ${PRESET_COUNT} presets`;
+  if (title) title.textContent = `Cybercat · ${PRESET_COUNT} presets`;
   const countLine = panel?.querySelector(".pad-preset-count");
   if (countLine) {
     countLine.textContent =
@@ -752,6 +752,7 @@ async function refreshPad() {
   try {
     const st = await tauriInvoke("pad_status", { address: state.padAddress });
     state.padAddress = st.address;
+    // Live BLE advertise name is a compatibility identifier (legacy: Cyberdeck Pad).
     const line = `${st.name || "Cyberdeck Pad"} · ${st.address} · ${
       st.connected ? "connected" : "disconnected"
     }${st.paired ? " · paired" : ""}${st.info ? " · " + st.info : ""}`;
@@ -767,7 +768,8 @@ async function refreshPad() {
     }
     renderPadGrid();
   } catch (e) {
-    $("#padStatusLine").textContent = "Pad not found — pair Cyberdeck Pad as a keyboard first";
+    $("#padStatusLine").textContent =
+      "Cybercat not found — pair as a keyboard (BLE name may show Cyberdeck Pad)";
     toast(String(e));
   }
 }
