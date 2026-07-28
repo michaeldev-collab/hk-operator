@@ -1,0 +1,48 @@
+{
+  "actions": [
+    {
+      "id": "a_example_composer",
+      "name": "Composer — AI slash cycle",
+      "category": "Cursor Prompts",
+      "description": "Cycles generic slash tokens (edit in MCC composer panel).",
+      "type": "composer",
+      "value": "ai",
+      "tags": ["composer", "slash"],
+      "favorite": true,
+      "lastUsed": null,
+      "createdAt": "2026-07-28T00:00:00.000Z"
+    },
+    {
+      "id": "a_example_url",
+      "name": "Docs — example",
+      "category": "URLs",
+      "description": "Placeholder URL action for profile demos.",
+      "type": "url",
+      "value": "https://example.com",
+      "tags": ["example"],
+      "favorite": false,
+      "lastUsed": null,
+      "createdAt": "2026-07-28T00:00:00.000Z"
+    }
+  ],
+  "padBindings": {
+    "2-0": "a_example_composer"
+  },
+  "padPresetNames": [
+    "Preset 1",
+    "Preset 2",
+    "Host bridge",
+    "Preset 4",
+    "Preset 5",
+    "Preset 6"
+  ],
+  "composers": {
+    "ai": {
+      "commands": ["/help", "/review", "/plan"],
+      "separator": " ",
+      "timeoutMs": 4000,
+      "resetOn": ["timeout", "explicitClear"]
+    }
+  },
+  "allowedCommands": []
+}
