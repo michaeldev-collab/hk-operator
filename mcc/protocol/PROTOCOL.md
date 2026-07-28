@@ -1,7 +1,7 @@
-# Cybercat BLE protocol (host side)
+# Cyberpad BLE protocol (host side)
 
 Canonical UUIDs and binary layout for HK Operator MCC / probe CLI talking to
-**Cybercat**.
+**Cyberpad**.
 
 Firmware: [`../../firmware/`](../../firmware/)  
 Info string (v0.2+): `Cyberdeck Pad Hybrid v0.2.0` *(compatibility identifier —
@@ -16,7 +16,7 @@ do not change without coordinating all bonded hosts)*
 | Info | `c0de0004-3d17-4a00-8000-00805f9b34fb` |
 
 ## Device name
-BLE advertised name: **`Cyberdeck Pad`** *(legacy / compatibility — Cybercat
+BLE advertised name: **`Cyberdeck Pad`** *(legacy / compatibility — Cyberpad
 does not rename the advertise string in this release; pair as that keyboard name)*
 
 ## Presets & LEDs

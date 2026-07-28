@@ -1,7 +1,7 @@
 # Portfolio project: HK Config Sync
 
 **Status:** MVP shipped in MCC — disk profiles + Git config sync panel (`hk-config` clone, `gh` auth, create private repo, pull/apply, push).  
-**Parent product:** HK Operator MCC + Cybercat (hybrid BLE HID / GATT).  
+**Parent product:** HK Operator MCC + Cyberpad (hybrid BLE HID / GATT).  
 **Thesis:** configuration is data, not code — so the pad follows you across machines.
 
 ---
@@ -146,7 +146,7 @@ Hardware change ≠ workflow rewrite.
 
 ## Relation to this repo
 
-- **Now:** Cybercat + MCC prove hybrid HID/macro and host-side execution.  
+- **Now:** Cyberpad + MCC prove hybrid HID/macro and host-side execution.  
 - **Next portfolio slice:** portable, versioned **hk-config** + MCC import/sync.  
 - Keep firmware dumb; keep workflow in Git.
 

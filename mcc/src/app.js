@@ -516,7 +516,7 @@ function ensurePadGridStructure() {
   }
 
   const title = panel?.querySelector(".pad-head h2");
-  if (title) title.textContent = `Cybercat · ${PRESET_COUNT} presets`;
+  if (title) title.textContent = `Cyberpad · ${PRESET_COUNT} presets`;
   const countLine = panel?.querySelector(".pad-preset-count");
   if (countLine) {
     countLine.textContent =
@@ -769,7 +769,7 @@ async function refreshPad() {
     renderPadGrid();
   } catch (e) {
     $("#padStatusLine").textContent =
-      "Cybercat not found — pair as a keyboard (BLE name may show Cyberdeck Pad)";
+      "Cyberpad not found — pair as a keyboard (BLE name may show Cyberdeck Pad)";
     toast(String(e));
   }
 }

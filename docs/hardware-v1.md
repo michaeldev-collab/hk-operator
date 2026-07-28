@@ -1,14 +1,14 @@
-# Cybercat V1 Hardware
+# Cyberpad V1 Hardware
 
 ## Origin
 
-Cybercat V1 was built in one day from parts already available rather than designed
+Cyberpad V1 was built in one day from parts already available rather than designed
 around a custom PCB or enclosure. It is the physical controller for the
 [HK Operator](../README.md) platform.
 
 ## Construction
 
-Cybercat V1 is literally an ESP32 development board and mechanical switches
+Cyberpad V1 is literally an ESP32 development board and mechanical switches
 mounted to perfboard, wired point-to-point, and held together with hot glue.
 
 Explicit inventory:
@@ -47,12 +47,12 @@ Images are not in the repository yet. Planned paths:
 
 | Shot | Path |
 | --- | --- |
-| Top view | `media/hardware/cybercat-v1/top.jpg` *(planned)* |
-| Underside wiring | `media/hardware/cybercat-v1/underside.jpg` *(planned)* |
-| Copper ground bus | `media/hardware/cybercat-v1/ground-bus.jpg` *(planned)* |
-| Hot-glue ergonomic support | `media/hardware/cybercat-v1/hot-glue-rest.jpg` *(planned)* |
-| Hand resting position | `media/hardware/cybercat-v1/hand-rest.jpg` *(planned)* |
-| MCC controlling Cybercat | `media/hardware/cybercat-v1/mcc-with-device.jpg` *(planned)* |
+| Top view | `media/hardware/cyberpad-v1/top.jpg` *(planned)* |
+| Underside wiring | `media/hardware/cyberpad-v1/underside.jpg` *(planned)* |
+| Copper ground bus | `media/hardware/cyberpad-v1/ground-bus.jpg` *(planned)* |
+| Hot-glue ergonomic support | `media/hardware/cyberpad-v1/hot-glue-rest.jpg` *(planned)* |
+| Hand resting position | `media/hardware/cyberpad-v1/hand-rest.jpg` *(planned)* |
+| MCC controlling Cyberpad | `media/hardware/cyberpad-v1/mcc-with-device.jpg` *(planned)* |
 
 ## Future hardware
 

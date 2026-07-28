@@ -1,11 +1,11 @@
 # HK Operator — Mission Control Center (MCC)
 
-Desktop companion for **Cybercat** (ESP32-C6 BLE HID hotkeys) plus a local action
+Desktop companion for **Cyberpad** (ESP32-C6 BLE HID hotkeys) plus a local action
 catalog (prompts, URLs, commands, paths).
 
 Hybrid model:
-- **HID slots** — Cybercat types keystrokes itself (works with this app closed).
-- **Macro slots** — Cybercat notifies this desktop app over custom GATT on the
+- **HID slots** — Cyberpad types keystrokes itself (works with this app closed).
+- **Macro slots** — Cyberpad notifies this desktop app over custom GATT on the
   **same** BlueZ link as the keyboard; the app runs the real action.
 
 Firmware: [`../firmware/`](../firmware/)  
@@ -41,7 +41,7 @@ cargo run -p cyberdeck-probe -- read-slots
 cargo run -p cyberdeck-probe -- listen
 ```
 
-Pair Cybercat as a Bluetooth keyboard first. The OS may show the legacy BLE
+Pair Cyberpad as a Bluetooth keyboard first. The OS may show the legacy BLE
 advertised name **`Cyberdeck Pad`**. The probe/app talk GATT on that existing
 connection — they do not open a second BLE link.
 
@@ -52,7 +52,7 @@ arduino-cli compile --fqbn esp32:esp32:esp32c6 \
   ../firmware
 ```
 
-Do **not** `upload` until the correct ESP32-C6 (Cybercat) is on the serial port.
+Do **not** `upload` until the correct ESP32-C6 (Cyberpad) is on the serial port.
 
 WiFi config portal is optional (`-DENABLE_WIFI_FALLBACK=1`). Default hybrid build
 is BLE-only.

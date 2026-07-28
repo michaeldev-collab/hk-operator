@@ -3,7 +3,7 @@
 Canonical platform architecture lives at
 [`../docs/architecture.md`](../docs/architecture.md).
 
-**Cybercat** is the physical ESP32-C6 controller. This MCC tree is the Rust/Tauri
+**Cyberpad** is the physical ESP32-C6 controller. This MCC tree is the Rust/Tauri
 desktop companion: hybrid HID/macro slots over BLE GATT, local action catalog,
 profiles, and git config sync.
 

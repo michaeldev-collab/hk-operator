@@ -2,7 +2,7 @@
 
 **Status:** design only — do not implement yet.  
 **Source:** ChatGPT working notes (user) — interaction model for AI / Matrix slash commands.  
-**Parent product:** Cybercat + HK Operator MCC (Rust desktop).  
+**Parent product:** Cyberpad + HK Operator MCC (Rust desktop).  
 **Thesis:** one physical button becomes a **command composer** (rotating token stack), not one key per slash command.
 
 ---
