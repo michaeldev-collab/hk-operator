@@ -993,14 +993,168 @@ async function importProfileDisk() {
   }
   try {
     const store = await tauriInvoke("import_profile", { path });
-    state.actions = (store.actions || []).map(fromRustAction);
-    state.padBindings = store.padBindings || {};
-    state.padPresetNames = normalizePresetNames(store.padPresetNames);
-    state.composers = normalizeComposers(store.composers);
-    state.allowedCommands = new Set(store.allowedCommands || []);
-    render();
-    renderComposerPanel();
+    applyStoreFromRust(store);
     toast("Profile imported");
+  } catch (e) {
+    toast(String(e));
+  }
+}
+
+function applyStoreFromRust(store) {
+  state.actions = (store.actions || []).map(fromRustAction);
+  state.padBindings = store.padBindings || {};
+  state.padPresetNames = normalizePresetNames(store.padPresetNames);
+  state.composers = normalizeComposers(store.composers);
+  state.allowedCommands = new Set(store.allowedCommands || []);
+  render();
+  renderComposerPanel();
+}
+
+function fillGitProfileSelect(profiles, active) {
+  const sel = $("#gitProfileSelect");
+  if (!sel) return;
+  const cur = sel.value;
+  sel.replaceChildren();
+  const empty = el("option", { value: "", textContent: profiles?.length ? "Select…" : "No profiles yet" });
+  sel.append(empty);
+  for (const name of profiles || []) {
+    sel.append(el("option", { value: name, textContent: name }));
+  }
+  if (active && profiles?.includes(active)) sel.value = active;
+  else if (cur && profiles?.includes(cur)) sel.value = cur;
+}
+
+async function refreshGitSyncStatus() {
+  const line = $("#gitSyncStatusLine");
+  if (!isTauri()) {
+    if (line) line.textContent = "Git sync needs the desktop app";
+    return null;
+  }
+  try {
+    const st = await tauriInvoke("git_sync_status");
+    const auth = st.auth?.loggedIn
+      ? `GitHub: ${st.auth.user || "logged in"}`
+      : "GitHub: not logged in";
+    const remote = st.remote || "(no remote)";
+    const dirty = st.dirty ? " · dirty" : "";
+    if (line) {
+      line.textContent = `${auth} · ${remote} · branch ${st.branch || "—"} · ${
+        st.profiles?.length || 0
+      } profile(s)${dirty}`;
+    }
+    const input = $("#gitRemoteInput");
+    if (input && st.remote && !input.value) input.value = st.remote;
+    fillGitProfileSelect(st.profiles, st.settings?.activeProfile);
+    return st;
+  } catch (e) {
+    if (line) line.textContent = String(e);
+    return null;
+  }
+}
+
+async function gitSaveRemote() {
+  if (!isTauri()) return toast("Desktop only");
+  const remote = $("#gitRemoteInput")?.value?.trim();
+  if (!remote) return toast("Enter a remote URL");
+  try {
+    await tauriInvoke("git_sync_set_remote", { remote });
+    toast("Remote saved");
+    await refreshGitSyncStatus();
+  } catch (e) {
+    toast(String(e));
+  }
+}
+
+async function gitEnsureRepo() {
+  if (!isTauri()) return toast("Desktop only");
+  try {
+    await tauriInvoke("git_sync_ensure_repo");
+    toast("Local hk-config ready");
+    await refreshGitSyncStatus();
+  } catch (e) {
+    toast(String(e));
+  }
+}
+
+async function gitPull() {
+  if (!isTauri()) return toast("Desktop only");
+  try {
+    const msg = await tauriInvoke("git_sync_pull");
+    toast(String(msg).slice(0, 120));
+    await refreshGitSyncStatus();
+  } catch (e) {
+    toast(String(e));
+  }
+}
+
+async function gitPush() {
+  if (!isTauri()) return toast("Desktop only");
+  try {
+    const msg = await tauriInvoke("git_sync_push");
+    toast(String(msg).slice(0, 120));
+    await refreshGitSyncStatus();
+  } catch (e) {
+    toast(String(e));
+  }
+}
+
+async function gitPullApply() {
+  if (!isTauri()) return toast("Desktop only");
+  const name = $("#gitProfileSelect")?.value;
+  if (!name) return toast("Select a profile");
+  if (
+    state.actions.length > 0 &&
+    !confirm(`Pull & replace live MCC store with profile "${name}"?`)
+  ) {
+    return;
+  }
+  try {
+    const store = await tauriInvoke("git_sync_pull_apply", { name });
+    applyStoreFromRust(store);
+    toast(`Applied profile "${name}"`);
+    await refreshGitSyncStatus();
+  } catch (e) {
+    toast(String(e));
+  }
+}
+
+async function gitPushProfile() {
+  if (!isTauri()) return toast("Desktop only");
+  const suggested = $("#gitProfileSelect")?.value || "dev";
+  const name = prompt("Profile name to push", suggested);
+  if (!name) return;
+  try {
+    const msg = await tauriInvoke("git_sync_push_profile", { name });
+    toast(String(msg).slice(0, 140));
+    await refreshGitSyncStatus();
+    const sel = $("#gitProfileSelect");
+    if (sel) sel.value = name.trim();
+  } catch (e) {
+    toast(String(e));
+  }
+}
+
+async function ghLogin() {
+  if (!isTauri()) return toast("Desktop only");
+  try {
+    const msg = await tauriInvoke("gh_auth_login");
+    toast(String(msg));
+  } catch (e) {
+    toast(String(e));
+  }
+}
+
+async function gitCreateRepo() {
+  if (!isTauri()) return toast("Desktop only");
+  const name = prompt("New private GitHub repo name", "hk-config");
+  if (!name) return;
+  try {
+    const msg = await tauriInvoke("git_sync_create_repo", {
+      name,
+      privateRepo: true,
+    });
+    toast(String(msg).slice(0, 160));
+    await refreshGitSyncStatus();
   } catch (e) {
     toast(String(e));
   }
@@ -1117,6 +1271,16 @@ async function init() {
   $("#importProfileBtn")?.addEventListener("click", importProfileDisk);
   $("#composerSaveBtn")?.addEventListener("click", applyComposerPanel);
   $("#composerResetBtn")?.addEventListener("click", resetComposerCycle);
+  $("#gitSyncRefreshBtn")?.addEventListener("click", refreshGitSyncStatus);
+  $("#gitRemoteSaveBtn")?.addEventListener("click", gitSaveRemote);
+  $("#gitEnsureRepoBtn")?.addEventListener("click", gitEnsureRepo);
+  $("#gitPullBtn")?.addEventListener("click", gitPull);
+  $("#gitPushBtn")?.addEventListener("click", gitPush);
+  $("#gitPullApplyBtn")?.addEventListener("click", gitPullApply);
+  $("#gitPushProfileBtn")?.addEventListener("click", gitPushProfile);
+  $("#ghAuthLoginBtn")?.addEventListener("click", ghLogin);
+  $("#gitCreateRepoBtn")?.addEventListener("click", gitCreateRepo);
+  refreshGitSyncStatus();
   $("#importInput").addEventListener("change", (e) => {
     if (e.target.files[0]) importJson(e.target.files[0]);
     e.target.value = "";

@@ -2,6 +2,8 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod git_sync;
+
 use cyberdeck_ble::{
     CyberdeckPad, HotkeySlot, MacroEvent, PadSlots, PadStatus, MODE_HID, MODE_MACRO,
 };
@@ -57,6 +59,7 @@ fn default_reset_on() -> Vec<String> {
 impl Default for ComposerConfig {
     fn default() -> Self {
         Self {
+            // Public portfolio defaults — no private board slash names.
             commands: vec![
                 "/help".into(),
                 "/review".into(),
@@ -119,17 +122,26 @@ impl Store {
 }
 
 struct ComposerRuntime {
-    /// composer_id → next index
+    /// Current preview index while picking
     index: HashMap<String, usize>,
-    /// composer_id → generation (bump to cancel pending timeout)
+    /// Last press time
+    last_press: HashMap<String, std::time::Instant>,
+    /// Bump to cancel a pending "pause = lock in" timer
     generation: HashMap<String, u64>,
+    /// True while rotating before a pause lock-in
+    picking: HashMap<String, bool>,
+    /// How many commands locked into this compose session (for separator)
+    committed: HashMap<String, usize>,
 }
 
 impl Default for ComposerRuntime {
     fn default() -> Self {
         Self {
             index: HashMap::new(),
+            last_press: HashMap::new(),
             generation: HashMap::new(),
+            picking: HashMap::new(),
+            committed: HashMap::new(),
         }
     }
 }
@@ -275,6 +287,23 @@ fn auto_paste() -> Result<(), String> {
     Ok(())
 }
 
+/// Undo last edit in the focused window (Ctrl+Z via ydotool).
+fn auto_undo() -> Result<(), String> {
+    ensure_ydotoold();
+    let sock = ydotoold_socket();
+    std::thread::sleep(std::time::Duration::from_millis(40));
+    // KEY_LEFTCTRL=29, KEY_Z=44
+    let status = Command::new("ydotool")
+        .env("YDOTOOL_SOCKET", &sock)
+        .args(["key", "--key-delay=12", "29:1", "44:1", "44:0", "29:0"])
+        .status()
+        .map_err(|e| format!("ydotool undo failed to start: {e}"))?;
+    if !status.success() {
+        return Err(format!("ydotool undo exited {status}"));
+    }
+    Ok(())
+}
+
 fn paste_text(text: &str, label: &str) -> Result<String, String> {
     // Prefer KDE Klipper on this host — arboard alone often writes a
     // clipboard backend with no wl-clipboard/xclip installed.
@@ -329,6 +358,9 @@ async fn execute_action(
         }
         "prompt" | "note" => paste_text(&action.value, &action.name),
         "composer" => {
+            // Live-rotate: rapid presses replace the preview (undo + paste next).
+            // Pause ≥ timeoutMs locks the current slash into the prompt; next
+            // burst picks the following command to stack.
             let id = action.value.trim();
             if id.is_empty() {
                 return Err("composer action needs a composer id in value (e.g. ai)".into());
@@ -342,26 +374,83 @@ async fn execute_action(
                 return Err(format!("composer \"{id}\" has no commands"));
             }
             let len = cfg.commands.len();
-            let idx = runtime.index.get(id).copied().unwrap_or(0) % len;
+            let timeout_ms = cfg.timeout_ms.max(500);
+            let timeout = std::time::Duration::from_millis(timeout_ms);
+            let now = std::time::Instant::now();
+            let was_picking = runtime.picking.get(id).copied().unwrap_or(false);
+            let committed = runtime.committed.get(id).copied().unwrap_or(0);
+
+            // Very long idle → fresh compose session
+            if let Some(last) = runtime.last_press.get(id) {
+                if now.duration_since(*last) >= timeout.saturating_mul(3) {
+                    runtime.committed.insert(id.to_string(), 0);
+                    runtime.picking.insert(id.to_string(), false);
+                    runtime.index.insert(id.to_string(), 0);
+                }
+            }
+            let committed = runtime.committed.get(id).copied().unwrap_or(committed);
+
+            let idx = if was_picking {
+                let cur = runtime.index.get(id).copied().unwrap_or(0) % len;
+                let next = (cur + 1) % len;
+                // Replace previous preview in the focused field
+                if let Err(e) = auto_undo() {
+                    eprintln!("[mcc] composer undo failed: {e}");
+                }
+                next
+            } else {
+                0
+            };
+
             let token = cfg.commands[idx].clone();
-            runtime.index.insert(id.to_string(), (idx + 1) % len);
+            let text = if committed > 0 {
+                format!("{}{}", cfg.separator, token)
+            } else {
+                token.clone()
+            };
+
+            runtime.index.insert(id.to_string(), idx);
+            runtime.picking.insert(id.to_string(), true);
+            runtime.last_press.insert(id.to_string(), now);
             let gen = runtime.generation.entry(id.to_string()).or_insert(0);
             *gen += 1;
             let my_gen = *gen;
-            let timeout = cfg.timeout_ms;
-            let reset_timeout = cfg.reset_on.iter().any(|r| r == "timeout");
-            if reset_timeout && timeout > 0 {
-                let id_owned = id.to_string();
-                let st = state.clone();
-                tauri::async_runtime::spawn(async move {
-                    tokio::time::sleep(std::time::Duration::from_millis(timeout)).await;
-                    let mut rt = st.composer.lock().await;
-                    if rt.generation.get(&id_owned).copied().unwrap_or(0) == my_gen {
-                        rt.index.insert(id_owned, 0);
-                    }
-                });
-            }
-            paste_text(&token, &format!("{} [{}]", action.name, token))
+
+            // After idle pause, lock in current preview and end this pick burst.
+            let id_owned = id.to_string();
+            let st = state.clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(timeout).await;
+                let mut rt = st.composer.lock().await;
+                if rt.generation.get(&id_owned).copied().unwrap_or(0) == my_gen
+                    && rt.picking.get(&id_owned).copied().unwrap_or(false)
+                {
+                    let n = rt.committed.get(&id_owned).copied().unwrap_or(0) + 1;
+                    rt.committed.insert(id_owned.clone(), n);
+                    rt.picking.insert(id_owned.clone(), false);
+                    rt.index.insert(id_owned, 0);
+                    let _ = Command::new("notify-send")
+                        .args([
+                            "-a",
+                            "MCC Pad",
+                            "composer locked",
+                            "Paused — current slash kept. Press again to pick the next.",
+                        ])
+                        .status();
+                }
+            });
+
+            paste_text(
+                &text,
+                &format!(
+                    "{} rotate [{}] ({}/{}) — pause {}ms to lock",
+                    action.name,
+                    token,
+                    idx + 1,
+                    len,
+                    timeout_ms
+                ),
+            )
         }
         "command" => {
             if !store.allowed_commands.contains(&action.id) {
@@ -431,15 +520,13 @@ async fn reset_composer(
     let mut runtime = state.composer.lock().await;
     if let Some(id) = composer_id {
         runtime.index.insert(id.clone(), 0);
+        runtime.last_press.remove(&id);
+        runtime.picking.insert(id.clone(), false);
+        runtime.committed.insert(id.clone(), 0);
         let gen = runtime.generation.entry(id).or_insert(0);
         *gen += 1;
     } else {
-        for (_, idx) in runtime.index.iter_mut() {
-            *idx = 0;
-        }
-        for (_, gen) in runtime.generation.iter_mut() {
-            *gen += 1;
-        }
+        *runtime = ComposerRuntime::default();
     }
     Ok(())
 }
@@ -514,15 +601,7 @@ async fn import_profile(
     let raw = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
     let profile: ProfileFile = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
     let mut store = state.store.lock().await;
-    store.actions = profile.actions;
-    store.pad_bindings = profile.pad_bindings;
-    store.pad_preset_names = profile.pad_preset_names;
-    store.composers = if profile.composers.is_empty() {
-        default_composers()
-    } else {
-        profile.composers
-    };
-    store.allowed_commands = profile.allowed_commands;
+    apply_profile_file(&mut store, profile);
     store.save(&state.store_path)?;
     let out = store.clone();
     drop(store);
@@ -550,6 +629,134 @@ async fn import_profile(
         serde_json::to_string_pretty(&settings).unwrap_or_default(),
     );
     Ok(out)
+}
+
+fn config_dir_from_store(store_path: &PathBuf) -> PathBuf {
+    store_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .to_path_buf()
+}
+
+fn apply_profile_file(store: &mut Store, profile: ProfileFile) {
+    store.actions = profile.actions;
+    store.pad_bindings = profile.pad_bindings;
+    store.pad_preset_names = profile.pad_preset_names;
+    store.composers = if profile.composers.is_empty() {
+        default_composers()
+    } else {
+        profile.composers
+    };
+    store.allowed_commands = profile.allowed_commands;
+}
+
+#[tauri::command]
+async fn git_sync_status(state: State<'_, Arc<AppState>>) -> Result<git_sync::GitSyncStatus, String> {
+    let dir = config_dir_from_store(&state.store_path);
+    Ok(git_sync::status(&dir))
+}
+
+#[tauri::command]
+async fn git_sync_set_remote(
+    state: State<'_, Arc<AppState>>,
+    remote: String,
+) -> Result<git_sync::GitSyncStatus, String> {
+    let dir = config_dir_from_store(&state.store_path);
+    git_sync::set_remote(&dir, &remote)?;
+    Ok(git_sync::status(&dir))
+}
+
+#[tauri::command]
+async fn git_sync_ensure_repo(
+    state: State<'_, Arc<AppState>>,
+) -> Result<git_sync::GitSyncStatus, String> {
+    let dir = config_dir_from_store(&state.store_path);
+    git_sync::ensure_local_repo(&dir)?;
+    Ok(git_sync::status(&dir))
+}
+
+#[tauri::command]
+async fn git_sync_pull(state: State<'_, Arc<AppState>>) -> Result<String, String> {
+    let dir = config_dir_from_store(&state.store_path);
+    git_sync::pull(&dir)
+}
+
+#[tauri::command]
+async fn git_sync_push(state: State<'_, Arc<AppState>>) -> Result<String, String> {
+    let dir = config_dir_from_store(&state.store_path);
+    git_sync::push_all(&dir)
+}
+
+#[tauri::command]
+async fn git_sync_push_profile(
+    state: State<'_, Arc<AppState>>,
+    name: String,
+) -> Result<String, String> {
+    let dir = config_dir_from_store(&state.store_path);
+    let store = state.store.lock().await;
+    let profile = ProfileFile {
+        actions: store.actions.clone(),
+        pad_bindings: store.pad_bindings.clone(),
+        pad_preset_names: store.pad_preset_names.clone(),
+        composers: store.composers.clone(),
+        allowed_commands: store.allowed_commands.clone(),
+    };
+    drop(store);
+    let json = serde_json::to_string_pretty(&profile).map_err(|e| e.to_string())?;
+    let path = git_sync::write_profile_file(&dir, &name, &json)?;
+    let push = git_sync::push_all(&dir)?;
+    let mut settings = git_sync::load_settings(&dir);
+    settings.active_profile = Some(git_sync::sanitize_profile_name(&name)?);
+    git_sync::save_settings(&dir, &settings)?;
+    Ok(format!("Wrote {} · {push}", path.display()))
+}
+
+#[tauri::command]
+async fn git_sync_pull_apply(
+    state: State<'_, Arc<AppState>>,
+    name: String,
+) -> Result<Store, String> {
+    let dir = config_dir_from_store(&state.store_path);
+    let _ = git_sync::pull(&dir); // best-effort; still apply local copy if offline
+    let raw = git_sync::read_profile_file(&dir, &name)?;
+    let profile: ProfileFile = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
+    let mut store = state.store.lock().await;
+    apply_profile_file(&mut store, profile);
+    store.save(&state.store_path)?;
+    let out = store.clone();
+    drop(store);
+    let mut runtime = state.composer.lock().await;
+    *runtime = ComposerRuntime::default();
+    let mut settings = git_sync::load_settings(&dir);
+    settings.active_profile = Some(git_sync::sanitize_profile_name(&name)?);
+    settings.last_pull_at = Some(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0),
+    );
+    let _ = git_sync::save_settings(&dir, &settings);
+    Ok(out)
+}
+
+#[tauri::command]
+async fn gh_auth_status() -> Result<git_sync::GhAuthStatus, String> {
+    Ok(git_sync::gh_auth_status())
+}
+
+#[tauri::command]
+async fn gh_auth_login() -> Result<String, String> {
+    git_sync::open_gh_login()
+}
+
+#[tauri::command]
+async fn git_sync_create_repo(
+    state: State<'_, Arc<AppState>>,
+    name: String,
+    private_repo: bool,
+) -> Result<String, String> {
+    let dir = config_dir_from_store(&state.store_path);
+    git_sync::create_github_repo(&dir, &name, private_repo)
 }
 
 #[tauri::command]
@@ -757,6 +964,16 @@ fn main() {
             reset_composer,
             export_profile,
             import_profile,
+            git_sync_status,
+            git_sync_set_remote,
+            git_sync_ensure_repo,
+            git_sync_pull,
+            git_sync_push,
+            git_sync_push_profile,
+            git_sync_pull_apply,
+            gh_auth_status,
+            gh_auth_login,
+            git_sync_create_repo,
             start_macro_listen,
             stop_macro_listen,
             mode_constants,

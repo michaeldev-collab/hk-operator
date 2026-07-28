@@ -342,6 +342,28 @@ body {
   border: 1px solid var(--line);
   border-radius: 8px;
 }
+.git-remote-label {
+  flex: 1 1 280px;
+}
+.git-remote-label input {
+  min-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
+}
+#gitProfileSelect {
+  min-width: 160px;
+  padding: 6px 8px;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
 .dialog fieldset {
   border: 1px solid var(--line);
   border-radius: 8px;

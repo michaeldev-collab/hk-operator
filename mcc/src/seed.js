@@ -1,7 +1,6 @@
 // seed.js — useful sample actions for first run. Plain data, no logic.
 // Public portfolio seeds only — no private host paths or internal slash routers.
 export const SEED_ACTIONS = [
-  // --- Prompts ---
   {
     name: "Prompt — ask for help",
     category: "Prompts",
@@ -21,34 +20,14 @@ export const SEED_ACTIONS = [
     favorite: true,
   },
   {
-    name: "Prompt — repair plan",
-    category: "Prompts",
-    type: "prompt",
-    description: "Turn a build error into a repair plan.",
-    value: "/plan Repo repair. Here's the error: <paste log>. Smallest additive fix, root cause (Known vs Assumption), repair plan, Next Prompt.",
-    tags: ["prompt", "repair"],
-    favorite: false,
-  },
-  // --- Cursor Prompts ---
-  {
-    name: "Cursor — implementation prompt scaffold",
-    category: "Cursor Prompts",
-    type: "prompt",
-    description: "Turn a goal into an implementation-ready Cursor prompt.",
-    value: "Goal: <what should exist>. Constraints: additive only, don't touch <X>, branch first. Steps: 1)... Done when: <condition>.",
-    tags: ["cursor", "scaffold"],
-    favorite: false,
-  },
-  {
     name: "Composer — AI slash cycle",
     category: "Cursor Prompts",
     type: "composer",
-    description: "Cycles /help → /review → /plan (edit list in Slash composer panel).",
+    description: "Live-rotate slash tokens; pause to lock, then pick the next.",
     value: "ai",
     tags: ["composer", "slash"],
     favorite: true,
   },
-  // --- Git ---
   {
     name: "Git — status + last 5 commits",
     category: "Terminal Commands",
@@ -59,57 +38,10 @@ export const SEED_ACTIONS = [
     favorite: false,
   },
   {
-    name: "Git — new branch from main",
-    category: "Terminal Commands",
-    type: "command",
-    description: "Branch before doing risky work.",
-    value: "git checkout main && git pull && git checkout -b feature/<name>",
-    tags: ["git", "branch"],
-    favorite: false,
-  },
-  {
-    name: "Git — undo last commit (keep changes)",
-    category: "Terminal Commands",
-    type: "command",
-    description: "Soft reset, files stay staged.",
-    value: "git reset --soft HEAD~1",
-    tags: ["git", "undo"],
-    favorite: false,
-  },
-  // --- Docker ---
-  {
-    name: "Docker — list running containers",
-    category: "Terminal Commands",
-    type: "command",
-    description: "See what's up right now.",
-    value: "docker ps --format 'table {{.Names}}\\t{{.Status}}\\t{{.Ports}}'",
-    tags: ["docker"],
-    favorite: false,
-  },
-  {
-    name: "Docker — compose up (rebuild)",
-    category: "Terminal Commands",
-    type: "command",
-    description: "Rebuild and start a stack.",
-    value: "docker compose up -d --build",
-    tags: ["docker", "compose", "deploy"],
-    favorite: false,
-  },
-  {
-    name: "Docker — tail logs",
-    category: "Terminal Commands",
-    type: "command",
-    description: "Follow logs for a service.",
-    value: "docker compose logs -f <service>",
-    tags: ["docker", "logs"],
-    favorite: false,
-  },
-  // --- Deployment / desktop ---
-  {
     name: "Serve browser MCC locally",
     category: "Terminal Commands",
     type: "command",
-    description: "Static UI only (no BLE). Prefer: npm run dev for the desktop app.",
+    description: "Static UI only (no BLE).",
     value: "cd ~/hk-operator/mcc/src && python3 -m http.server 8000",
     tags: ["deploy", "local", "serve"],
     favorite: false,
@@ -124,61 +56,6 @@ export const SEED_ACTIONS = [
     favorite: true,
   },
   {
-    name: "Deploy checklist",
-    category: "Prompts",
-    type: "note",
-    description: "Pre-deploy gate, run before go-live.",
-    value: "1) branch + backup 2) secrets in env, none in repo 3) build passes 4) smoke test core flow 5) rollback path known 6) exposure check",
-    tags: ["deploy", "checklist"],
-    favorite: false,
-  },
-  // --- Cyberdeck Pad launchers (edit paths for your machine) ---
-  {
-    name: "Cyberdeck — open sysmon",
-    category: "Client/Admin Tools",
-    type: "command",
-    description: "Preset 3 / B2 macro — point at your local launcher script.",
-    value: "~/scripts/open-sysmon.sh",
-    tags: ["esp32", "cyberdeck", "launcher"],
-    favorite: true,
-  },
-  {
-    name: "Cyberdeck — open task app",
-    category: "Client/Admin Tools",
-    type: "command",
-    description: "Preset 3 / B4 macro — point at your local launcher script.",
-    value: "~/scripts/open-task-app.sh",
-    tags: ["esp32", "cyberdeck", "launcher"],
-    favorite: true,
-  },
-  {
-    name: "Cyberdeck — open VS Code",
-    category: "Client/Admin Tools",
-    type: "command",
-    description: "Preset 3 / B5 macro — point at your local launcher script.",
-    value: "~/scripts/open-vscode.sh",
-    tags: ["esp32", "cyberdeck", "launcher"],
-    favorite: true,
-  },
-  {
-    name: "Cyberdeck Pad — WiFi rescue portal",
-    category: "Client/Admin Tools",
-    type: "url",
-    description: "Only if firmware built with ENABLE_WIFI_FALLBACK=1. Long-press B3, join CyberdeckPad-Config.",
-    value: "http://192.168.4.1",
-    tags: ["esp32", "hotkeys", "cyberdeck", "wifi"],
-    favorite: false,
-  },
-  {
-    name: "Cyberdeck Pad — compile hybrid firmware",
-    category: "Terminal Commands",
-    type: "command",
-    description: "Compile only — do not upload until the correct ESP32-C6 is plugged in.",
-    value: "arduino-cli compile --fqbn esp32:esp32:esp32c6 --libraries ~/Arduino/libraries ~/hk-operator/firmware",
-    tags: ["esp32", "arduino", "cyberdeck"],
-    favorite: false,
-  },
-  {
     name: "Cyberdeck probe — status",
     category: "Terminal Commands",
     type: "command",
@@ -187,54 +64,6 @@ export const SEED_ACTIONS = [
     tags: ["esp32", "ble", "probe"],
     favorite: false,
   },
-  // --- VPS ---
-  {
-    name: "VPS — SSH in",
-    category: "Terminal Commands",
-    type: "command",
-    description: "Connect to the VPS (edit host/user).",
-    value: "ssh <user>@<vps-host>",
-    tags: ["vps", "ssh"],
-    favorite: false,
-  },
-  {
-    name: "VPS — disk + memory",
-    category: "Terminal Commands",
-    type: "command",
-    description: "Fast health check.",
-    value: "df -h && free -h",
-    tags: ["vps", "health"],
-    favorite: false,
-  },
-  {
-    name: "VPS dashboard",
-    category: "URLs",
-    type: "url",
-    description: "Hosting / VPS control panel (edit URL).",
-    value: "https://example-vps-panel.local",
-    tags: ["vps", "dashboard"],
-    favorite: false,
-  },
-  // --- CRM ---
-  {
-    name: "CRM dashboard",
-    category: "Client/Admin Tools",
-    type: "url",
-    description: "Lead pipeline (edit URL).",
-    value: "https://example-crm.local",
-    tags: ["crm", "leads"],
-    favorite: false,
-  },
-  {
-    name: "CRM — follow-up note template",
-    category: "Prompts",
-    type: "note",
-    description: "Quick follow-up structure.",
-    value: "Hi <name> — following up on <thing>. Next step: <small concrete step>. Worth a quick call <day>?",
-    tags: ["crm", "followup"],
-    favorite: false,
-  },
-  // --- Project paths ---
   {
     name: "Path — HK Operator MCC",
     category: "Project Paths",
@@ -255,10 +84,4 @@ export const SEED_ACTIONS = [
   },
 ];
 
-/** Default padBindings keys "preset-action" → seed action *name* (remapped to id on first load).
- * Matches historical KDE shortcuts: Ctrl+Alt+1/2/3 = task / sysmon / vscode. */
-export const SEED_PAD_BINDINGS = {
-  "2-0": "Cyberdeck — open task app",
-  "2-1": "Cyberdeck — open sysmon",
-  "2-2": "Cyberdeck — open VS Code",
-};
+export const SEED_PAD_BINDINGS = {};

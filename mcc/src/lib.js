@@ -15,6 +15,7 @@ export const ACTION_TYPES = ["url", "command", "prompt", "path", "note", "compos
 export function defaultComposers() {
   return {
     ai: {
+      // Public portfolio defaults — no private board slash names.
       commands: ["/help", "/review", "/plan"],
       separator: " ",
       timeoutMs: 4000,

@@ -296,7 +296,6 @@ impl CyberdeckPad {
         println!("device {} connected={}", self.address, self.device.is_connected().await?);
         let svc = Uuid::parse_str(SERVICE_UUID).unwrap();
         let evt = Uuid::parse_str(MACRO_EVENT_UUID).unwrap();
-        let mut found = false;
         for service in self.device.services().await? {
             let su = service.uuid().await?;
             println!("service {su}");
@@ -310,7 +309,6 @@ impl CyberdeckPad {
                 if cu != evt {
                     continue;
                 }
-                found = true;
                 println!(
                     "subscribing to MacroEvent — press a MACRO-mode button within {wait_secs}s…"
                 );
@@ -337,10 +335,7 @@ impl CyberdeckPad {
                 }
             }
         }
-        if !found {
-            return Err(BleError::CharMissing(MACRO_EVENT_UUID.into()));
-        }
-        Ok(None)
+        Err(BleError::CharMissing(MACRO_EVENT_UUID.into()))
     }
 
     /// Subscribe to MacroEvent notifications. Returns a stream of events.

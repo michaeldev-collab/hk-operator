@@ -6,7 +6,7 @@
     <title>HK Operator</title>
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
-    <link rel="stylesheet" href="./styles.css?v=6p6" />
+    <link rel="stylesheet" href="./styles.css?v=6p7" />
   </head>
   <body>
     <header class="topbar">
@@ -14,7 +14,7 @@
         <span class="logo">▣</span>
         <div>
           <h1>HK Operator</h1>
-          <p class="sub">Cyberdeck Pad companion — HID + BLE macros · UI 6p6</p>
+          <p class="sub">Cyberdeck Pad companion — HID + BLE macros · UI 6p7</p>
         </div>
       </div>
       <div class="actions">
@@ -55,7 +55,7 @@
       <div class="pad-head">
         <div>
           <h2>Slash composer · ai</h2>
-          <p class="sub">Bind an action of type <code>composer</code> (value <code>ai</code>) to a pad slot. Each press pastes the next token.</p>
+          <p class="sub">Rapid-press to rotate the live slash (replaces preview). Pause ≥ timeout to lock it in, then press again to pick the next command to stack.</p>
         </div>
         <div class="pad-actions">
           <button id="composerResetBtn" class="btn" type="button">Reset cycle</button>
@@ -72,7 +72,40 @@
       <p class="pad-hint">Idle timeout resets to the first command. Enter-key reset is not hooked yet.</p>
     </section>
 
-    <section class="controls">
+    <section id="gitSyncPanel" class="pad-panel composer-panel">
+      <div class="pad-head">
+        <div>
+          <h2>Git config sync</h2>
+          <p class="sub">Clone lives under <code>~/.config/…/hk-config/</code>. Pull a profile to apply it; push sends the current store.</p>
+        </div>
+        <div class="pad-actions">
+          <button id="gitSyncRefreshBtn" class="btn" type="button">Refresh</button>
+        </div>
+      </div>
+      <p id="gitSyncStatusLine" class="sub">Checking…</p>
+      <div class="composer-row">
+        <label class="git-remote-label">Remote
+          <input id="gitRemoteInput" type="text" placeholder="git@github.com:you/hk-config.git" />
+        </label>
+        <button id="gitRemoteSaveBtn" class="btn" type="button">Save remote</button>
+        <button id="gitEnsureRepoBtn" class="btn" type="button">Init local repo</button>
+      </div>
+      <div class="composer-row">
+        <button id="ghAuthLoginBtn" class="btn" type="button">GitHub login…</button>
+        <button id="gitCreateRepoBtn" class="btn" type="button">Create private repo</button>
+        <button id="gitPullBtn" class="btn" type="button">Pull</button>
+        <button id="gitPushBtn" class="btn" type="button">Push</button>
+      </div>
+      <div class="composer-row">
+        <label>Profile
+          <select id="gitProfileSelect"></select>
+        </label>
+        <button id="gitPullApplyBtn" class="btn primary" type="button">Pull &amp; apply</button>
+        <button id="gitPushProfileBtn" class="btn primary" type="button">Push current as…</button>
+      </div>
+      <p class="pad-hint">Needs <code>git</code> + <code>gh</code> on PATH. SSH uses <code>~/.ssh/id_ed25519_github_account</code> when present.</p>
+    </section>
+
       <input id="search" class="search" type="search" aria-label="Search actions by name, content, or tags" placeholder="Search name, content, tags…  (Enter copies top result)" />
       <select id="categoryFilter" class="select" aria-label="Filter by category"></select>
       <select id="typeFilter" class="select" aria-label="Filter by type"></select>
@@ -134,6 +167,6 @@
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-    <script type="module" src="./app.js?v=6p6"></script>
+    <script type="module" src="./app.js?v=6p7"></script>
   </body>
 </html>

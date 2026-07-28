@@ -45,12 +45,16 @@ Export/import portable JSON from the MCC UI, or copy [`config/examples/dev.json`
 into your profiles directory.
 
 ## Slash composer
-Bind an action of type `composer` with value `ai`. Each pad press pastes the next
-token from the composer list (timeout resets to the first command).
+Bind an action of type `composer` with value `ai`. Rapid-press live-rotates the
+slash preview; pause ≥ timeout locks it in; press again to pick the next token to stack.
+
+## Git config sync
+From the MCC **Git config sync** panel: init `~/.config/hk-operator/hk-config/`,
+set a remote (or create a private repo via `gh`), then **Push current as…** /
+**Pull & apply** named profiles.
 
 ## License
 [MIT](./LICENSE). (Apache-2.0 was the patent-grant alternative; GPL-3.0 was rejected for portfolio reuse friction.)
 
 ## Status
-Portfolio scaffold. Original working trees remain the recovery source until this
-repo is verified end-to-end.
+Public portfolio cut. Daily-driver MCC remains the recovery / private-config source.

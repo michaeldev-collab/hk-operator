@@ -1,6 +1,6 @@
 # Portfolio project: HK Config Sync
 
-**Status:** design only — do not implement yet (planned next session).  
+**Status:** MVP shipped in MCC — disk profiles + Git config sync panel (`hk-config` clone, `gh` auth, create private repo, pull/apply, push).  
 **Parent product:** HK Operator MCC + Cyberdeck Pad (hybrid BLE HID / GATT).  
 **Thesis:** configuration is data, not code — so the pad follows you across machines.
 
