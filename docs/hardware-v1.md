@@ -17,12 +17,14 @@ Explicit inventory:
 - Generic perfboard
 - Mechanical keyboard switches mounted directly to the perfboard
 - Point-to-point wiring
-- Solid copper common-ground bus
+- Solid copper / soldered common-ground bus
 - Hot glue used for structural mounting
-- Hot glue also used as an ergonomic hand-rest feature
+- Hot glue also used as an ergonomic hand-rest / chassis feature
 - Three status LEDs
 - No production enclosure
 - No custom PCB
+
+![Cyberpad V1 top view beside a full keyboard](../media/hardware/cyberpad-v1/top.jpg)
 
 ## Why it matters
 
@@ -37,22 +39,44 @@ Despite the crude construction:
 
 ## Ground bus
 
-A solid copper bar serves as the common ground for the switch matrix. On
-perfboard it reduces star-ground spaghetti, keeps returns short, and makes
-point-to-point wiring easier to reason about when revising a one-day build.
+A solid common-ground bus serves the switch matrix. On perfboard it reduces
+star-ground spaghetti, keeps returns short, and makes point-to-point wiring
+easier to reason about when revising a one-day build.
 
-## Planned media
+The photo below is the **ground bar bus** — hot glue peeled back to show the
+soldered edge rail that ties the switch grounds together.
 
-Images are not in the repository yet. Planned paths:
+![Ground bar bus revealed under peeled hot glue](../media/hardware/cyberpad-v1/ground-bus.jpg)
 
-| Shot | Path |
-| --- | --- |
-| Top view | `media/hardware/cyberpad-v1/top.jpg` *(planned)* |
-| Underside wiring | `media/hardware/cyberpad-v1/underside.jpg` *(planned)* |
-| Copper ground bus | `media/hardware/cyberpad-v1/ground-bus.jpg` *(planned)* |
-| Hot-glue ergonomic support | `media/hardware/cyberpad-v1/hot-glue-rest.jpg` *(planned)* |
-| Hand resting position | `media/hardware/cyberpad-v1/hand-rest.jpg` *(planned)* |
-| MCC controlling Cyberpad | `media/hardware/cyberpad-v1/mcc-with-device.jpg` *(planned)* |
+## Underside and hot-glue chassis
+
+Point-to-point red/black wiring under the board, potted in places with hot glue:
+
+![Cyberpad V1 underside wiring](../media/hardware/cyberpad-v1/underside.jpg)
+
+Side profile — the thick hot-glue mass doubles as structural support / hand rest,
+with the ground bus running through the glue line:
+
+![Hot-glue ergonomic / chassis side view](../media/hardware/cyberpad-v1/hot-glue-rest.jpg)
+
+## Desk context
+
+![Cyberpad V1 at desk scale next to a keyboard](../media/hardware/cyberpad-v1/desk-scale.jpg)
+
+![Alternate top angle](../media/hardware/cyberpad-v1/top-angled.jpg)
+
+## Media index
+
+| Shot | Path | Notes |
+| --- | --- | --- |
+| Top view | [`media/hardware/cyberpad-v1/top.jpg`](../media/hardware/cyberpad-v1/top.jpg) | Overhead with keyboard for scale |
+| Underside wiring | [`media/hardware/cyberpad-v1/underside.jpg`](../media/hardware/cyberpad-v1/underside.jpg) | Point-to-point + glue potting |
+| Copper / solder ground bus | [`media/hardware/cyberpad-v1/ground-bus.jpg`](../media/hardware/cyberpad-v1/ground-bus.jpg) | **Glue peeled up** to show the ground bar bus |
+| Hot-glue ergonomic support | [`media/hardware/cyberpad-v1/hot-glue-rest.jpg`](../media/hardware/cyberpad-v1/hot-glue-rest.jpg) | Side profile / glue chassis |
+| Desk scale | [`media/hardware/cyberpad-v1/desk-scale.jpg`](../media/hardware/cyberpad-v1/desk-scale.jpg) | Lit green LED + keyboard |
+| Top angled | [`media/hardware/cyberpad-v1/top-angled.jpg`](../media/hardware/cyberpad-v1/top-angled.jpg) | Alternate angle |
+| Hand resting position | — | *(not yet)* |
+| MCC controlling Cyberpad | — | *(not yet)* |
 
 ## Future hardware
 
