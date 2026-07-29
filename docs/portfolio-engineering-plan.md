@@ -149,6 +149,27 @@ Separate commit(s) from Phase 3. Each finding: reference, code change, regressio
 
 Sanitized screenshots/GIF/short video: Cyberpad press → MCC event → binding → composer/action → desktop result. No private prompts, client URLs, home paths, MACs, or personal remotes.
 
+#### Capture checklist (WIP=1 order)
+
+| # | Shot / clip | Shows | Redact |
+| --- | --- | --- | --- |
+| 1 | Still: Cyberpad V1 on desk (or reuse `hardware-v1` photos) | Physical controller | Face, clutter with private screens |
+| 2 | Still: MCC pad grid with public seed bindings | Slot → action mapping | Live allowlist, fire token, remotes |
+| 3 | GIF ≤15s: pad press → MCC toast / composer paste | End-to-end host effect | Command text if private; MAC already redacted in UI |
+| 4 | Still: security controls callout (threat model § summary) | Operator-grade gates without overclaim | Secrets, LAN tokens |
+| 5 | Optional: short screen capture of `cyberdeck-probe status` | Probe path | Ensure redacted address in frame |
+
+#### Acceptance
+
+- [ ] `docs/portfolio-evidence/` (or `mcc/docs/evidence/`) with 3–5 sanitized assets + `README.md` describing sequence
+- [ ] Cross-links from `mcc/docs/PORTFOLIO.md` and architecture
+- [ ] `rg` hygiene: no `/home/`, no Bluetooth MAC pattern, no private remotes in committed media metadata/captions
+- [ ] Commit message style: `docs(portfolio): add sanitized Cyberpad-to-MCC workflow evidence`
+
+#### Non-goals this phase
+
+No AppImage/release packaging (Phase 7). No firmware flash. No UUID / BLE advertise-name changes. No private daily-driver store export.
+
 ### Phase 7 — Reproducible packaging and release
 
 Align versions; firmware artifact + checksums; MCC Linux package; toolchain pins; compatibility matrix; upgrade/rollback; config backup/migrate; probe-only diagnostics; release notes.
