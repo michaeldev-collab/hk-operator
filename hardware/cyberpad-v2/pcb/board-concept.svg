@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="520" height="440" viewBox="0 0 520 440">
+  <rect width="520" height="440" fill="#1a1d24"/>
+  <text x="16" y="28" fill="#e6edf3" font-family="ui-sans-serif,system-ui,sans-serif" font-size="16" font-weight="700">Cyberpad V2 PCB concept (draft)</text>
+  <text x="16" y="48" fill="#8b949e" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11">95 x 78 mm nominal - GND pour - female ESP headers - MX hotswap - NeoPixel zone TBD</text>
+
+  <!-- PCB outline -->
+  <rect x="40" y="70" width="380" height="312" rx="6" fill="#2d6a4f" stroke="#95d5b2" stroke-width="2" opacity="0.35"/>
+  <rect x="40" y="70" width="380" height="312" rx="6" fill="none" stroke="#52b788" stroke-width="2"/>
+  <text x="50" y="88" fill="#95d5b2" font-family="monospace" font-size="10">PCB 95x78</text>
+
+  <!-- B1 -->
+  <rect x="190" y="100" width="48" height="48" rx="4" fill="#1c2330" stroke="#4493f8" stroke-width="2"/>
+  <text x="214" y="128" text-anchor="middle" fill="#e6edf3" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12">B1</text>
+  <text x="214" y="142" text-anchor="middle" fill="#8b949e" font-family="ui-sans-serif,system-ui,sans-serif" font-size="9">GPIO2</text>
+
+  <!-- NeoPixel zone -->
+  <rect x="280" y="105" width="120" height="40" rx="4" fill="#161b22" stroke="#f0c14a" stroke-dasharray="4 3"/>
+  <text x="340" y="130" text-anchor="middle" fill="#f0c14a" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10">NeoPixel zone TBD</text>
+
+  <!-- Action row B2 B4 B5 -->
+  <rect x="100" y="175" width="48" height="48" rx="4" fill="#1c2330" stroke="#2ea043" stroke-width="2"/>
+  <text x="124" y="203" text-anchor="middle" fill="#e6edf3" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12">B2</text>
+  <text x="124" y="217" text-anchor="middle" fill="#8b949e" font-family="ui-sans-serif,system-ui,sans-serif" font-size="9">GPIO3</text>
+
+  <rect x="190" y="175" width="48" height="48" rx="4" fill="#1c2330" stroke="#2ea043" stroke-width="2"/>
+  <text x="214" y="203" text-anchor="middle" fill="#e6edf3" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12">B4</text>
+  <text x="214" y="217" text-anchor="middle" fill="#8b949e" font-family="ui-sans-serif,system-ui,sans-serif" font-size="9">GPIO6</text>
+
+  <rect x="280" y="175" width="48" height="48" rx="4" fill="#1c2330" stroke="#2ea043" stroke-width="2"/>
+  <text x="304" y="203" text-anchor="middle" fill="#e6edf3" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12">B5</text>
+  <text x="304" y="217" text-anchor="middle" fill="#8b949e" font-family="ui-sans-serif,system-ui,sans-serif" font-size="9">GPIO5</text>
+
+  <!-- B3 -->
+  <rect x="190" y="245" width="48" height="48" rx="4" fill="#1c2330" stroke="#a371f7" stroke-width="2"/>
+  <text x="214" y="273" text-anchor="middle" fill="#e6edf3" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12">B3</text>
+  <text x="214" y="287" text-anchor="middle" fill="#8b949e" font-family="ui-sans-serif,system-ui,sans-serif" font-size="9">GPIO4</text>
+
+  <!-- ESP socket -->
+  <rect x="90" y="320" width="220" height="48" rx="3" fill="#0d1117" stroke="#e6edf3" stroke-width="1.5"/>
+  <text x="200" y="340" text-anchor="middle" fill="#e6edf3" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11">ESP32-C6 DevKit female headers</text>
+  <text x="200" y="356" text-anchor="middle" fill="#8b949e" font-family="ui-sans-serif,system-ui,sans-serif" font-size="9">USB-C out bottom - all GND pins to pour</text>
+  <!-- header dots -->
+  <g fill="#8b949e">
+    <circle cx="105" cy="330" r="2"/><circle cx="115" cy="330" r="2"/><circle cx="125" cy="330" r="2"/>
+    <circle cx="105" cy="358" r="2"/><circle cx="115" cy="358" r="2"/><circle cx="125" cy="358" r="2"/>
+    <circle cx="275" cy="330" r="2"/><circle cx="285" cy="330" r="2"/><circle cx="295" cy="330" r="2"/>
+    <circle cx="275" cy="358" r="2"/><circle cx="285" cy="358" r="2"/><circle cx="295" cy="358" r="2"/>
+  </g>
+
+  <!-- legend -->
+  <text x="40" y="410" fill="#8b949e" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10">Draft only - not Gerbers. Hotswap under each Bn. Pitch 19.05 mm target.</text>
+</svg>

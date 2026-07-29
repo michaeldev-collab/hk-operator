@@ -178,7 +178,11 @@ Covers: version alignment (Cargo 0.1 → app 0.2 drift), `.deb` artifact, firmwa
 
 ### Phase 8 — Future Cyberpad hardware revision
 
-Custom PCB / mount / enclosure / strain relief / serviceability while **preserving muscle-memory layout**. V1 remains the validated daily-driver chapter — not “defective because crude.”
+**Drafted:** [`hardware/cyberpad-v2/`](../hardware/cyberpad-v2/) — PCB concept SVG, OpenSCAD case + STL, total-hardware README; PCB plan in [`docs/hardware-v2-pcb.md`](./hardware-v2-pcb.md).
+
+Socketed ESP32-C6 DevKit, MX hotswap switches, GND pour, NeoPixel zone TBD, muscle-memory layout. **Undecided until PCB fab + dry-fit.** V1 remains the validated chapter.
+
+**Next:** NeoPixel power/count decision → KiCad real footprints → lock SCAD to final outline.
 
 ## E. Proposed commit roadmap
 

@@ -82,13 +82,12 @@ with the ground bus running through the glue line:
 
 ## Future hardware
 
-Planned improvements (V1 is not being retired):
+Planned improvements (V1 is not being retired) — **draft started**:
+[`hardware/cyberpad-v2/`](../hardware/cyberpad-v2/) · [`hardware-v2-pcb.md`](./hardware-v2-pcb.md)
 
-- Custom PCB
-- Proper switch mounting
-- Enclosure
-- Strain relief
-- Serviceability
+- Custom PCB (socketed ESP + hotswap switches + GND pour)
+- OpenSCAD case + draft STL
+- Proper switch mounting / enclosure / strain relief after electrical validation
 - Preserving the validated physical layout that already has muscle memory
 
 ## Related

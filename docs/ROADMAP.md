@@ -9,8 +9,9 @@
 - [x] Phase 5 — GitHub Actions CI: Rust check/test, JS tests, firmware source gate ([run](https://github.com/michaeldev-collab/hk-operator/actions/runs/30478533368) green)
 - [x] Phase 6 — Sanitized Cyberpad→MCC portfolio evidence ([`docs/portfolio-evidence/`](./portfolio-evidence/))
 - [x] Phase 7 start — Release packaging plan ([`docs/release-packaging.md`](./release-packaging.md), [`docs/COMPATIBILITY.md`](./COMPATIBILITY.md))
+- [x] Phase 8 start — Cyberpad V2 hardware draft ([`hardware/cyberpad-v2/`](../hardware/cyberpad-v2/), [`docs/hardware-v2-pcb.md`](./hardware-v2-pcb.md))
 - [x] Rename runtime config dir to `~/.config/hk-operator/` in MCC binary
 - [x] Git-aware profile sync UI (MCC panel)
 - [ ] Enter-key composer reset (global hotkey)
 - [ ] Phase 7 execute — version align, tag release `.deb`, checksums on Release page
-- [ ] Phase 8 — Cyberpad hardware revision docs (preserve V1 layout)
+- [ ] Phase 8 execute — KiCad footprints/Gerbers, NeoPixel power decision, case dims lock to PCB

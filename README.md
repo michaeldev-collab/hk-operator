@@ -78,6 +78,7 @@ set a remote (or create a private repo via `gh`), then **Push current as…** /
 - [Release packaging plan](./docs/release-packaging.md)
 - [Compatibility matrix](./docs/COMPATIBILITY.md)
 - [Portfolio evidence](./docs/portfolio-evidence/)
+- [Cyberpad V2 hardware draft](./hardware/cyberpad-v2/)
 - [V1 hardware, summarized](./docs/ESP-AND-HOT-GLUE.md)
 
 ## License
