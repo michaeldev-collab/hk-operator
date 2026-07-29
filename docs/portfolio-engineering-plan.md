@@ -139,7 +139,7 @@ Docs-only commit: assets, actors, trust boundaries, attack scenarios, STRIDE-equ
 
 Separate commit(s) from Phase 3. Each finding: reference, code change, regression test, docs, residual risk. Anticipate (only if confirmed): structured process args, stronger profile validation, atomic config + last-known-good, git remote validation, redacted logs, protocol pre-checks.
 
-**Started:** P3-01 (fire API token + POST-only fire), P3-02 (ignore profile `allowedCommands` on apply), and P3-03 (value-fingerprint shell allowlist) remediated. Remaining: P3-04…P3-09.
+**Started:** P3-01…P3-04 remediated (fire token, profile allowlist scrub, value-fingerprint shell allowlist, ydotool socket `0600`). Remaining: P3-05…P3-09.
 
 ### Phase 5 — Continuous integration
 

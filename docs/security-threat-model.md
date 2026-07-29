@@ -40,7 +40,7 @@ local desktop + BLE operator tooling.
 | Actor | Reach |
 | --- | --- |
 | Local operator | Full UI + Tauri IPC (intentional) |
-| Other local processes / malware | Loopback fire API; readable config; ydotool socket if world-mode |
+| Other local processes / malware | Loopback fire API (needs token); readable config; ydotool only if same-user socket access |
 | Physical / BLE proximity | Bonded Cyberpad HID + GATT; HID works with MCC closed |
 | Malicious profile JSON | Import or pull-apply into live store |
 | Malicious git remote | After `set_remote` + pull, attacker-controlled profile content |
@@ -78,6 +78,7 @@ Cyberpad FW ──BLE HID+GATT──► BlueZ ──► MCC (Tauri)
 | Unknown action types rejected | `execute_action` → `unknown_type_err` |
 | Profile name path sanitization | `git_sync::sanitize_profile_name` (`/`, `\`, NUL → `_`) |
 | Composer id / non-empty commands | `composer::composer_precheck` |
+| ydotool socket owner-only when MCC starts daemon | `ydotoold -P 0600` via `ydotool_sock` (P3-04) |
 | Slot blob length checks | `PadSlots::pack` / `unpack`; `pad_write_slots` expects 18 |
 | MacroEvent needs ≥2 bytes | `MacroEvent::from_bytes` |
 | Git pull ff-only | `git_sync::pull` |
@@ -114,7 +115,7 @@ These are **absent** — do not document them as shipped controls:
 | Arbitrary git remote URL | **Unmitigated** | `set_remote` trim + non-empty only |
 | BLE MacroEvent without bond | **Partial** | Relies on BlueZ; no app auth on payload |
 | HID typing with MCC closed | **By design** | Firmware HID mode |
-| Cross-user keystroke via ydotool socket | **Unmitigated** | `ydotoold -P 0666` when started by MCC |
+| Cross-user keystroke via ydotool socket | **Mitigated** | MCC starts `ydotoold -P 0600`; refuses non-owner sockets; default path under `$XDG_RUNTIME_DIR` |
 | Import arbitrary filesystem path | **Unmitigated** | `import_profile(path)` reads caller path |
 
 ## 8. Findings backlog (Phase 4)
@@ -124,7 +125,7 @@ These are **absent** — do not document them as shipped controls:
 | **P3-01** | High → **Remediated** | `fire_api` + `spawn_localhost_fire_api` | Token required for `POST /fire/*`; GET fire rejected; health `/` open | Residual: same-user token file / `.desktop` Exec readability |
 | **P3-02** | High → **Remediated** | `profile_apply` + `apply_profile_file` | Profile/git apply ignores `allowedCommands`; keeps live allowlist ∩ action ids | Residual: operator must re-approve shell after intentional allowlist migration |
 | **P3-03** | High → **Remediated** | `dispatch::command_gate` + fingerprint | Allowlist stores id→value fingerprint; edited values need re-approval | Residual: still `bash -lc` without OS sandbox (intentional non-goal this pass) |
-| **P3-04** | Medium | `ensure_ydotoold` `-P 0666` | World-accessible uinput control socket | Other local users/processes can inject keystrokes |
+| **P3-04** | Medium → **Remediated** | `ydotool_sock` + `ensure_ydotoold` | Socket mode `0600`; recreate if group/other bits set; avoid `/tmp` default | Residual: pre-existing foreign `YDOTOOL_SOCKET` still honored if already owner-only; same-user injection remains by design |
 | **P3-05** | Medium | `git_sync::set_remote` | No scheme/host allowlist on remote URL | Operator can be pointed at attacker-controlled remote |
 | **P3-06** | Medium | `import_profile` | Arbitrary path read into live store | Confused-deputy overwrite of operator config |
 | **P3-07** | Medium | `save_store` accepts full `Store` | Webview/`save_store` can expand allowlist without `allow_command` UX | XSS / compromised webview → shell approvals |
@@ -140,9 +141,9 @@ These are **absent** — do not document them as shipped controls:
 
 HK Operator MCC is a **high-privilege local automation surface** by design: pad presses and the fire API can open URLs, paste text, and (after approval) run shell. Localhost binding, fire-token gate, URL/allowlist gates, and non-import of profile allowlists are real.
 
-Open residual risk centers on **P3-04+** (ydotool mode, git remote validation, etc.), same-user fire-token readability, and lack of OS sandbox around `bash -lc`.
+Open residual risk centers on **P3-05+** (git remote validation, import path, save_store allowlist expansion, MAC redaction), same-user fire-token readability, and lack of OS sandbox around `bash -lc`.
 
-**Next gate:** continue Phase 4 with P3-04 (ydotool socket mode) or P3-05 (git remote allowlist), separate commits each.
+**Next gate:** continue Phase 4 with P3-05 (git remote allowlist) or P3-06 (import path confinement), separate commits each.
 
 ## 10. Verification of this document
 
@@ -150,7 +151,7 @@ Open residual risk centers on **P3-04+** (ydotool mode, git remote validation, e
 | --- | --- |
 | Controls cited exist in tree | Verified against `main.rs`, `dispatch.rs`, `composer.rs`, `git_sync.rs`, `lib.js` |
 | Non-claims listed | Explicit §6 |
-| Remediations shipped | **P3-01, P3-02, P3-03** |
+| Remediations shipped | **P3-01 … P3-04** |
 | Firmware UUID / BLE name / flash | Untouched |
 | Runtime exploit exercise | **Not performed** |
 

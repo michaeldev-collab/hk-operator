@@ -7,6 +7,7 @@ mod dispatch;
 mod fire_api;
 mod git_sync;
 mod profile_apply;
+mod ydotool_sock;
 
 use composer::{
     apply_composer_press, reset_composer_runtime, try_lock_composer, ComposerConfig,
@@ -32,6 +33,7 @@ use std::process::Command;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::Mutex;
+use ydotool_sock::{prepare_ydotool_socket, resolve_ydotool_socket_path, ydotoold_spawn_args};
 
 const APP_DIR: &str = "hk-operator";
 const STORE_FILE: &str = "store.json";
@@ -209,21 +211,28 @@ struct MacroFiredPayload {
 }
 
 fn ydotoold_socket() -> PathBuf {
-    std::env::var_os("YDOTOOL_SOCKET")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/tmp/.ydotool_socket"))
+    let config_dir = config_path()
+        .parent()
+        .map(|p| p.to_path_buf());
+    resolve_ydotool_socket_path(config_dir.as_deref())
 }
 
 /// Ensure ydotoold is up so we can synthesize Ctrl+V on Wayland.
+/// P3-04: socket mode 0600; refuse/recreate group/world-accessible sockets.
 fn ensure_ydotoold() {
     use std::process::Stdio;
     let sock = ydotoold_socket();
-    if sock.exists() {
-        return;
+    match prepare_ydotool_socket(&sock) {
+        Ok(true) => return, // existing owner-only socket
+        Ok(false) => {}
+        Err(e) => {
+            eprintln!("[mcc] ydotool socket prepare failed: {e}");
+            return;
+        }
     }
-    let sock_str = sock.to_string_lossy().into_owned();
+    let args = ydotoold_spawn_args(&sock);
     let _ = Command::new("ydotoold")
-        .args(["-p", &sock_str, "-P", "0666"])
+        .args(&args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
