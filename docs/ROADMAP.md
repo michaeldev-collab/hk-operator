@@ -6,7 +6,7 @@
 - [x] Phase 2 protocol / dispatch / composer regressions — `npm test` under `mcc/`
 - [x] Phase 3 sanitized threat model — [`docs/security-threat-model.md`](./security-threat-model.md)
 - [x] Phase 4 — P3-01…P3-09 remediated (fire token through URL/MacroEvent edge gates)
-- [ ] GitHub Actions: `cargo check` / `cargo test` + firmware compile CI (Phase 5)
+- [x] Phase 5 — GitHub Actions CI: Rust check/test, JS tests, firmware source gate
 - [x] Rename runtime config dir to `~/.config/hk-operator/` in MCC binary
 - [x] Git-aware profile sync UI (MCC panel)
 - [ ] Enter-key composer reset (global hotkey)

@@ -139,11 +139,11 @@ Docs-only commit: assets, actors, trust boundaries, attack scenarios, STRIDE-equ
 
 Separate commit(s) from Phase 3. Each finding: reference, code change, regression test, docs, residual risk. Anticipate (only if confirmed): structured process args, stronger profile validation, atomic config + last-known-good, git remote validation, redacted logs, protocol pre-checks.
 
-**Done:** P3-01…P3-09 remediated (Phase 4 complete). **Next:** Phase 5 CI.
+**Done:** P3-01…P3-09 remediated (Phase 4 complete).
 
 ### Phase 5 — Continuous integration
 
-GitHub Actions: Rust fmt/check/test/clippy, JS smoke, firmware **compile** (never flash), public hygiene scans, example JSON + doc link checks. Pin/document board core and libraries.
+**Done:** `.github/workflows/ci.yml` — Rust workspace check/test/clippy, JS unit + harness tests, firmware source gate. Full Arduino/ESP-IDF compile CI is a future improvement (needs board toolchain in Actions). **Next:** Phase 6 portfolio evidence.
 
 ### Phase 6 — Portfolio evidence and demonstration
 
