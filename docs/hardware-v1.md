@@ -78,7 +78,7 @@ with the ground bus running through the glue line:
 | Desk scale | [`media/hardware/cyberpad-v1/desk-scale.jpg`](../media/hardware/cyberpad-v1/desk-scale.jpg) | Lit green LED + keyboard |
 | Top angled | [`media/hardware/cyberpad-v1/top-angled.jpg`](../media/hardware/cyberpad-v1/top-angled.jpg) | Alternate angle |
 | Hand resting position | — | *(not yet)* |
-| MCC controlling Cyberpad | — | *(not yet)* |
+| MCC controlling Cyberpad | [`docs/portfolio-evidence/`](./portfolio-evidence/) | Illustrative MCC frames + workflow GIF (Phase 6) |
 
 ## Future hardware
 

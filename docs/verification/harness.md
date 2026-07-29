@@ -18,7 +18,7 @@ codec, dispatch gates, and composer FSM. HITL paths remain listed, not green.
 | BLE slot codec + desktop pure modules | `npm run test:rust` | No | Active |
 | Harness inventory | `npm run test:harness` | No | Active |
 | HITL probe checklist | Manual / optional | Yes | Template only |
-| Public evidence capture | Phase 6 | Capture only | Not started |
+| Public evidence capture | Phase 6 | Capture / mockups | [`docs/portfolio-evidence/`](../portfolio-evidence/) shipped (illustrative + hardware photos) |
 
 ## Capability matrix
 

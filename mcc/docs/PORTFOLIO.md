@@ -2,7 +2,8 @@
 
 | Doc | Idea | Status |
 | --- | --- | --- |
-| [../../docs/portfolio-engineering-plan.md](../../docs/portfolio-engineering-plan.md) | Phased verify → review → CI → release plan | **Phases 0–5 done; Phase 6 evidence next** |
+| [../../docs/portfolio-engineering-plan.md](../../docs/portfolio-engineering-plan.md) | Phased verify → review → CI → release plan | **Phases 0–5 done; Phase 6 evidence shipped** |
+| [../../docs/portfolio-evidence/](../../docs/portfolio-evidence/) | Sanitized Cyberpad→MCC stills + workflow GIF | **Phase 6** |
 | [../../docs/architecture.md](../../docs/architecture.md) | Platform architecture | Current |
 | [../../docs/hardware-v1.md](../../docs/hardware-v1.md) | Cyberpad V1 validation story + photos | Current |
 | [portfolio-hk-config-sync.md](./portfolio-hk-config-sync.md) | Config as data; profile import/export + git sync UI | **MVP shipped** |

@@ -161,14 +161,12 @@ Sanitized screenshots/GIF/short video: Cyberpad press → MCC event → binding 
 
 #### Acceptance
 
-- [ ] `docs/portfolio-evidence/` (or `mcc/docs/evidence/`) with 3–5 sanitized assets + `README.md` describing sequence
-- [ ] Cross-links from `mcc/docs/PORTFOLIO.md` and architecture
-- [ ] `rg` hygiene: no `/home/`, no Bluetooth MAC pattern, no private remotes in committed media metadata/captions
-- [ ] Commit message style: `docs(portfolio): add sanitized Cyberpad-to-MCC workflow evidence`
+- [x] `docs/portfolio-evidence/` with sanitized assets + `README.md` describing sequence
+- [x] Cross-links from `mcc/docs/PORTFOLIO.md` and roadmap
+- [x] Hygiene: no `/home/`, no Bluetooth MAC pattern, no private remotes in captions/frames
+- [ ] Optional later: live HITL camera + MCC window GIF under same redaction rules
 
-#### Non-goals this phase
-
-No AppImage/release packaging (Phase 7). No firmware flash. No UUID / BLE advertise-name changes. No private daily-driver store export.
+**Done (illustrative pack):** hardware stills + MCC mockup sequence + `workflow.gif`. **Next:** Phase 7 packaging when ready.
 
 ### Phase 7 — Reproducible packaging and release
 

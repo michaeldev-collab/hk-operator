@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+  <rect width="960" height="540" fill="#0d1117"/>
+  <rect x="0" y="0" width="960" height="56" fill="#161b22"/>
+  <text x="24" y="36" fill="#4493f8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="22" font-weight="700">HK Operator</text>
+  <text x="160" y="36" fill="#8b949e" font-family="ui-sans-serif,system-ui,sans-serif" font-size="13">Composer - AI slash cycle (public defaults)</text>
+
+  <text x="24" y="100" fill="#e6edf3" font-family="ui-sans-serif,system-ui,sans-serif" font-size="16" font-weight="600">One pad button - rotate / lock / stack</text>
+  <text x="24" y="122" fill="#8b949e" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12">Defaults: /help /review /plan - separator space - timeout 4000ms</text>
+
+  <g font-family="ui-sans-serif,system-ui,sans-serif">
+    <rect x="80" y="170" width="200" height="120" rx="10" fill="#1c2330" stroke="#2a3140"/>
+    <text x="180" y="220" text-anchor="middle" fill="#8b949e" font-size="12">press 1</text>
+    <text x="180" y="250" text-anchor="middle" fill="#e6edf3" font-size="22" font-weight="700">/help</text>
+
+    <rect x="320" y="170" width="200" height="120" rx="10" fill="#1c2330" stroke="#4493f8" stroke-width="2"/>
+    <text x="420" y="220" text-anchor="middle" fill="#4493f8" font-size="12">press 2 - picking</text>
+    <text x="420" y="250" text-anchor="middle" fill="#e6edf3" font-size="22" font-weight="700">/review</text>
+
+    <rect x="560" y="170" width="200" height="120" rx="10" fill="#1c2330" stroke="#2a3140"/>
+    <text x="660" y="220" text-anchor="middle" fill="#8b949e" font-size="12">press 3</text>
+    <text x="660" y="250" text-anchor="middle" fill="#e6edf3" font-size="22" font-weight="700">/plan</text>
+  </g>
+
+  <rect x="80" y="340" width="680" height="80" rx="10" fill="#161b22" stroke="#2ea043"/>
+  <text x="100" y="375" fill="#8b949e" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12">locked stack (illustrative)</text>
+  <text x="100" y="400" fill="#e6edf3" font-family="ui-monospace,monospace" font-size="16">/help /review</text>
+
+  <text x="80" y="470" fill="#8b949e" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12">No private board slash names - portfolio defaults only</text>
+</svg>
