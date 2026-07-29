@@ -1,6 +1,6 @@
 # HK Operator — Portfolio Engineering Plan
 
-> Status: **Phase 0–2 complete** (inventory, harness stubs, HW-independent regressions).  
+> Status: **Phase 0–3 complete** (inventory, harness, HW-independent regressions, sanitized threat model).  
 > Repo: public `michaeldev-collab/hk-operator`  
 > Date: 2026-07-29  
 > Constraint: do not rewrite Git history; each future commit must be a real engineering pass.
@@ -132,6 +132,8 @@ Deterministic coverage for codec/malformed payloads, profile shape, URL schemes,
 ### Phase 3 — Threat model and sanitized security review
 
 Docs-only commit: assets, actors, trust boundaries, attack scenarios, STRIDE-equivalent, controls, findings, residual risks. Do not claim controls that are not in code.
+
+**Landed:** [`docs/security-threat-model.md`](./security-threat-model.md) — findings P3-01…P3-09 are Phase 4 backlog (no remediations in Phase 3).
 
 ### Phase 4 — Security remediation
 

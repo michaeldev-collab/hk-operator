@@ -100,10 +100,11 @@ Clipboard / keyboard / URL / process / composer adapter
 
 - Physical input originates on Cyberpad and crosses BLE to the host
 - MCC treats GATT events as local device input, then resolves against config
-- Configuration is validated for shape (types, categories, URL schemes)
-- Shell commands require explicit **Allow shell** (allowlist in store)
-- Arbitrary shell execution must not occur silently
+- UI form validation covers action shape / URL schemes; **Rust profile apply is serde-only** (see threat model)
+- Shell commands require an allowlisted action id (`Allow shell` / `allowed_commands`)
+- Allowlist can also arrive via profile import or git pull-apply — not only the UI confirm path
 - Private configuration should stay out of public Git; examples are sanitized
+- Full review: [`security-threat-model.md`](./security-threat-model.md)
 
 ## Failure modes
 
@@ -136,6 +137,7 @@ compiled into Cyberpad firmware. Clone or sync profiles, pair Cyberpad, launch M
 
 ## Related docs
 
+- [Sanitized threat model](./security-threat-model.md)
 - [Cyberpad V1 hardware](./hardware-v1.md)
 - [Cyberpad BLE protocol](../mcc/protocol/PROTOCOL.md)
 - [MCC](../mcc/README.md)
