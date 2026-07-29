@@ -5,8 +5,13 @@ use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 
 /// Match host URL gate used by `execute_action` (prefix check, not regex).
+/// Scheme compare is ASCII-case-insensitive and trims surrounding whitespace
+/// so Rust matches the JS `/^https?:\/\//i` validator (P3-09).
 pub fn url_scheme_allowed(value: &str) -> bool {
-    value.starts_with("http://") || value.starts_with("https://")
+    let v = value.trim().as_bytes();
+    // Check `https://` before `http://` — the latter is a prefix of the former.
+    (v.len() >= 8 && v[..8].eq_ignore_ascii_case(b"https://"))
+        || (v.len() >= 7 && v[..7].eq_ignore_ascii_case(b"http://"))
 }
 
 pub fn url_gate(value: &str) -> Result<(), String> {
@@ -128,10 +133,12 @@ mod tests {
     fn url_allows_http_https_only() {
         assert!(url_scheme_allowed("http://example.com"));
         assert!(url_scheme_allowed("https://example.com/x"));
+        assert!(url_scheme_allowed("HTTPS://example.com"));
+        assert!(url_scheme_allowed("  HtTp://example.com/x  "));
         assert!(!url_scheme_allowed("ftp://example.com"));
         assert!(!url_scheme_allowed("example.com"));
         assert!(!url_scheme_allowed(""));
-        assert!(!url_scheme_allowed("HTTPS://example.com"));
+        assert!(!url_scheme_allowed("javascript:alert(1)"));
         assert_eq!(
             url_gate("ftp://x").unwrap_err(),
             "Blocked: not an http(s) URL"

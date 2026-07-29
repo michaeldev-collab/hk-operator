@@ -324,7 +324,7 @@ async fn execute_action(
     match action.type_.as_str() {
         "url" => {
             url_gate(&action.value)?;
-            open::that(&action.value).map_err(|e| e.to_string())?;
+            open::that(action.value.trim()).map_err(|e| e.to_string())?;
             Ok(format!("opened {}", action.name))
         }
         "path" => {

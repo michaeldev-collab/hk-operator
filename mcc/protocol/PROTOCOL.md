@@ -44,7 +44,8 @@ B1 cycles presets **1..6**. Three LEDs encode the active preset:
 Prefer MTU ≥ 517 on both ends (firmware requests 517).
 
 ## MacroEvent notify
-2 bytes: `[preset_idx u8, action_idx u8]` (zero-based, preset may be `0..=5`).
+2 bytes: `[preset_idx u8, action_idx u8]` (zero-based).
+Hosts **must** ignore events outside `preset 0..=5` and `action 0..=2`.
 
 ## Host connection rule
 Do **not** open a second BLE link. Use BlueZ against the device already bonded/connected as HID keyboard.

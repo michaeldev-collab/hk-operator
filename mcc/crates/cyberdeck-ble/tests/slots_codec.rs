@@ -114,8 +114,14 @@ fn macro_event_from_bytes() {
     let ev = MacroEvent::from_bytes(&[3, 1]).unwrap();
     assert_eq!(ev.preset, 3);
     assert_eq!(ev.action, 1);
+    assert!(MacroEvent::from_bytes(&[0, 0]).is_some());
+    assert!(MacroEvent::from_bytes(&[5, 2]).is_some());
     assert!(MacroEvent::from_bytes(&[]).is_none());
     assert!(MacroEvent::from_bytes(&[1]).is_none());
+    // Out-of-range indices dropped (P3-09)
+    assert!(MacroEvent::from_bytes(&[6, 0]).is_none());
+    assert!(MacroEvent::from_bytes(&[0, 3]).is_none());
+    assert!(MacroEvent::from_bytes(&[255, 255]).is_none());
 }
 
 #[test]

@@ -142,14 +142,21 @@ pub struct MacroEvent {
 }
 
 impl MacroEvent {
+    /// Parse a MacroEvent notify payload.
+    ///
+    /// Requires ≥2 bytes and in-range indices (`preset < PRESET_COUNT`,
+    /// `action < ACTION_COUNT`) so hostile/corrupt notifies cannot invent
+    /// out-of-grid binding keys (P3-09).
     pub fn from_bytes(buf: &[u8]) -> Option<Self> {
         if buf.len() < 2 {
             return None;
         }
-        Some(Self {
-            preset: buf[0],
-            action: buf[1],
-        })
+        let preset = buf[0];
+        let action = buf[1];
+        if (preset as usize) >= PRESET_COUNT || (action as usize) >= ACTION_COUNT {
+            return None;
+        }
+        Some(Self { preset, action })
     }
 }
 

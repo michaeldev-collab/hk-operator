@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 /**
  * Phase 2 — dispatch schema regressions (HW-independent, no shell).
- * Mirrors host gates in spirit; JS URL check is case-insensitive regex,
- * Rust prefix gate is case-sensitive — both documented here.
+ * URL scheme check matches Rust `url_gate` (ASCII-case-insensitive http(s)).
  */
 import { validateAction, ACTION_TYPES } from "../src/lib.js";
 
@@ -27,7 +26,7 @@ check("https url ok", validateAction(base).ok);
 check("http url ok", validateAction({ ...base, value: "http://example.com" }).ok);
 check("ftp url rejected", !validateAction({ ...base, value: "ftp://example.com" }).ok);
 check("bare host rejected", !validateAction({ ...base, value: "example.com" }).ok);
-check("JS accepts HTTPS uppercase (stricter Rust gate differs)", validateAction({ ...base, value: "HTTPS://example.com" }).ok);
+check("HTTPS uppercase url ok (aligned with Rust url_gate)", validateAction({ ...base, value: "HTTPS://example.com" }).ok);
 
 check(
   "unknown type rejected",

@@ -80,7 +80,7 @@ Cyberpad FW ──BLE HID+GATT──► BlueZ ──► MCC (Tauri)
 | Composer id / non-empty commands | `composer::composer_precheck` |
 | ydotool socket owner-only when MCC starts daemon | `ydotoold -P 0600` via `ydotool_sock` (P3-04) |
 | Slot blob length checks | `PadSlots::pack` / `unpack`; `pad_write_slots` expects 18 |
-| MacroEvent needs ≥2 bytes | `MacroEvent::from_bytes` |
+| MacroEvent needs ≥2 bytes + in-range indices | `MacroEvent::from_bytes` (`preset < 6`, `action < 3`) |
 | Git pull ff-only | `git_sync::pull` |
 | Git remote scheme/host allowlist | `validate_git_remote_url` — github.com HTTPS/SSH only (P3-05) |
 | `gh` login gate for repo create | `create_github_repo` |
@@ -107,7 +107,8 @@ These are **absent** — do not document them as shipped controls:
 | Remote internet client hits fire API | **Mitigated** | Bind `127.0.0.1` only |
 | Local process fires bindings via loopback without token | **Mitigated** | Token required on `POST /fire/*`; GET fire → 405 |
 | Local process with token file / desktop Exec access | **Partial** | Same-user readable secret; not cross-UID by default |
-| `ftp:` / `javascript:` URL via Rust dispatch | **Mitigated** | `url_gate` prefix check |
+| `ftp:` / `javascript:` URL via Rust dispatch | **Mitigated** | `url_gate` ASCII-case-insensitive `http(s)://` prefix (trim) |
+| Out-of-range MacroEvent indices | **Mitigated** | `MacroEvent::from_bytes` drops `preset≥6` / `action≥3` |
 | Shell with cold (non-allowlisted) id | **Mitigated** | `command_gate` |
 | Shell after allowlist + mutated `value` | **Mitigated** | P3-03 value fingerprint gate; re-approve required |
 | Webview `save_store` expands allowlist | **Mitigated** | `retain_allowlist_for_save` ignores incoming allowlist; expand only via `allow_command` |
@@ -131,7 +132,7 @@ These are **absent** — do not document them as shipped controls:
 | **P3-06** | Medium → **Remediated** | `profile_path` + `import_profile` | Import confined to config `profiles/` and `hk-config/profiles/`; rejects traversal / non-JSON / outside roots | Residual: hostile JSON *inside* allowed dirs still applies actions (P3-02 allowlist scrub still applies) |
 | **P3-07** | Medium → **Remediated** | `retain_allowlist_for_save` + `save_store` | Incoming allowlist ignored; live entries retained ∩ action ids; expand only via `allow_command` | Residual: UI state can claim approvals until reload; re-create same id+value reuses prior approval |
 | **P3-08** | Low → **Remediated** | `redact_ble_address` + UI/probe | Status line and probe logs show `**:**:**:**:**:XX`; full MAC kept in-process for GATT | Residual: full MAC still in live memory / `--address` CLI arg / BlueZ tools |
-| **P3-09** | Low | `url_gate` case-sensitive vs JS regex; MacroEvent no index bounds | Edge inconsistencies | Low direct impact |
+| **P3-09** | Low → **Remediated** | `url_gate` + `MacroEvent::from_bytes` | Case-insensitive http(s) aligned with JS; MacroEvent indices bounded to pad grid | Residual: hostile in-range MacroEvent still fires bound actions (by design / BlueZ trust) |
 
 ### Severity notes
 
@@ -142,9 +143,9 @@ These are **absent** — do not document them as shipped controls:
 
 HK Operator MCC is a **high-privilege local automation surface** by design: pad presses and the fire API can open URLs, paste text, and (after approval) run shell. Localhost binding, fire-token gate, URL/allowlist gates, and non-import of profile allowlists are real.
 
-Open residual risk centers on **P3-09** (URL/MacroEvent edge quirks), same-user fire-token readability, and lack of OS sandbox around `bash -lc`.
+Open residual risk centers on same-user fire-token readability, lack of OS sandbox around `bash -lc`, and BlueZ-trust MacroEvent delivery. Phase 4 finding backlog **P3-01…P3-09** is remediated.
 
-**Next gate:** continue Phase 4 with P3-09 (URL case / MacroEvent bounds), or close Phase 4 and move to Phase 5 CI.
+**Next gate:** Phase 5 — GitHub Actions (`cargo check` / `cargo test` + firmware compile CI).
 
 ## 10. Verification of this document
 
@@ -152,7 +153,7 @@ Open residual risk centers on **P3-09** (URL/MacroEvent edge quirks), same-user 
 | --- | --- |
 | Controls cited exist in tree | Verified against `main.rs`, `dispatch.rs`, `composer.rs`, `git_sync.rs`, `lib.js` |
 | Non-claims listed | Explicit §6 |
-| Remediations shipped | **P3-01 … P3-08** |
+| Remediations shipped | **P3-01 … P3-09** (Phase 4 complete) |
 | Firmware UUID / BLE name / flash | Untouched |
 | Runtime exploit exercise | **Not performed** |
 
