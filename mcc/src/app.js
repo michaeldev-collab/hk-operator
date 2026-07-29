@@ -991,8 +991,8 @@ async function importProfileDisk() {
     return;
   }
   const path = prompt(
-    "Path to profile JSON",
-    `${(window.__MCC_HOME_HINT || "~")}/.config/hk-operator/profiles/dev.json`
+    "Profile name or path under ~/.config/hk-operator/profiles/ (or hk-config/profiles/)",
+    "dev"
   );
   if (!path) return;
   if (

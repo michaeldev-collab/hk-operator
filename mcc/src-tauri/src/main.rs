@@ -7,6 +7,7 @@ mod dispatch;
 mod fire_api;
 mod git_sync;
 mod profile_apply;
+mod profile_path;
 mod ydotool_sock;
 
 use composer::{
@@ -26,6 +27,7 @@ use fire_api::{
     FireRoute,
 };
 use profile_apply::{merge_allowlist_after_profile, ProfileApplyStats};
+use profile_path::resolve_confined_profile_path;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -525,6 +527,12 @@ async fn import_profile(
     state: State<'_, Arc<AppState>>,
     path: String,
 ) -> Result<Store, String> {
+    let config_dir = config_dir_from_store(&state.store_path);
+    let allowed = [
+        profiles_dir(&state.store_path),
+        git_sync::profiles_repo_dir(&config_dir),
+    ];
+    let path = resolve_confined_profile_path(&path, &allowed)?;
     let raw = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
     let profile: ProfileFile = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
     let mut store = state.store.lock().await;
@@ -540,7 +548,7 @@ async fn import_profile(
         .parent()
         .unwrap_or_else(|| std::path::Path::new("."))
         .join("settings.json");
-    let name = std::path::Path::new(&path)
+    let name = path
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("imported");
