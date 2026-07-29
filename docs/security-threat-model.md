@@ -82,6 +82,7 @@ Cyberpad FW ──BLE HID+GATT──► BlueZ ──► MCC (Tauri)
 | Slot blob length checks | `PadSlots::pack` / `unpack`; `pad_write_slots` expects 18 |
 | MacroEvent needs ≥2 bytes | `MacroEvent::from_bytes` |
 | Git pull ff-only | `git_sync::pull` |
+| Git remote scheme/host allowlist | `validate_git_remote_url` — github.com HTTPS/SSH only (P3-05) |
 | `gh` login gate for repo create | `create_github_repo` |
 | Declared Tauri capabilities | `capabilities/default.json` (`core:default`, `shell:allow-open`) |
 
@@ -91,7 +92,7 @@ These are **absent** — do not document them as shipped controls:
 
 - No TLS on the fire API (plain HTTP loopback)
 - No sandbox (seccomp / Landlock / bubblewrap) for `bash -lc`
-- No remote URL scheme/host allowlist for `git_sync::set_remote`
+- No remote URL scheme/host allowlist beyond GitHub — other forges intentionally rejected
 - No signature / integrity check on profile JSON or git payloads
 - No Rust-side semantic validation of imported actions (serde shape only)
 - No encryption of store/profiles at rest
@@ -112,7 +113,7 @@ These are **absent** — do not document them as shipped controls:
 | Shell after allowlist + mutated `value` | **Mitigated** | P3-03 value fingerprint gate; re-approve required |
 | Profile / git pull pre-seeds `allowed_commands` | **Mitigated** | Apply ignores profile allowlist; retains live ∩ action ids |
 | Profile name `../` traversal | **Mitigated** | `sanitize_profile_name` |
-| Arbitrary git remote URL | **Unmitigated** | `set_remote` trim + non-empty only |
+| Arbitrary git remote URL | **Mitigated** | `validate_git_remote_url` allows github.com HTTPS/SSH only |
 | BLE MacroEvent without bond | **Partial** | Relies on BlueZ; no app auth on payload |
 | HID typing with MCC closed | **By design** | Firmware HID mode |
 | Cross-user keystroke via ydotool socket | **Mitigated** | MCC starts `ydotoold -P 0600`; refuses non-owner sockets; default path under `$XDG_RUNTIME_DIR` |
@@ -126,7 +127,7 @@ These are **absent** — do not document them as shipped controls:
 | **P3-02** | High → **Remediated** | `profile_apply` + `apply_profile_file` | Profile/git apply ignores `allowedCommands`; keeps live allowlist ∩ action ids | Residual: operator must re-approve shell after intentional allowlist migration |
 | **P3-03** | High → **Remediated** | `dispatch::command_gate` + fingerprint | Allowlist stores id→value fingerprint; edited values need re-approval | Residual: still `bash -lc` without OS sandbox (intentional non-goal this pass) |
 | **P3-04** | Medium → **Remediated** | `ydotool_sock` + `ensure_ydotoold` | Socket mode `0600`; recreate if group/other bits set; avoid `/tmp` default | Residual: pre-existing foreign `YDOTOOL_SOCKET` still honored if already owner-only; same-user injection remains by design |
-| **P3-05** | Medium | `git_sync::set_remote` | No scheme/host allowlist on remote URL | Operator can be pointed at attacker-controlled remote |
+| **P3-05** | Medium → **Remediated** | `git_sync::validate_git_remote_url` | Only `github.com` HTTPS/SSH remotes; reject http/file/other hosts | Residual: GitHub itself can still host malicious profile content after pull (P3-02 still applies) |
 | **P3-06** | Medium | `import_profile` | Arbitrary path read into live store | Confused-deputy overwrite of operator config |
 | **P3-07** | Medium | `save_store` accepts full `Store` | Webview/`save_store` can expand allowlist without `allow_command` UX | XSS / compromised webview → shell approvals |
 | **P3-08** | Low | `PadStatus.address`; UI status; probe logs | BLE MAC displayed / printed without redaction | Shoulder-surf / log leakage of device address |
@@ -141,9 +142,9 @@ These are **absent** — do not document them as shipped controls:
 
 HK Operator MCC is a **high-privilege local automation surface** by design: pad presses and the fire API can open URLs, paste text, and (after approval) run shell. Localhost binding, fire-token gate, URL/allowlist gates, and non-import of profile allowlists are real.
 
-Open residual risk centers on **P3-05+** (git remote validation, import path, save_store allowlist expansion, MAC redaction), same-user fire-token readability, and lack of OS sandbox around `bash -lc`.
+Open residual risk centers on **P3-06+** (import path confinement, save_store allowlist expansion, MAC redaction), same-user fire-token readability, and lack of OS sandbox around `bash -lc`.
 
-**Next gate:** continue Phase 4 with P3-05 (git remote allowlist) or P3-06 (import path confinement), separate commits each.
+**Next gate:** continue Phase 4 with P3-06 (import path confinement) or P3-07 (`save_store` allowlist gate), separate commits each.
 
 ## 10. Verification of this document
 
@@ -151,7 +152,7 @@ Open residual risk centers on **P3-05+** (git remote validation, import path, sa
 | --- | --- |
 | Controls cited exist in tree | Verified against `main.rs`, `dispatch.rs`, `composer.rs`, `git_sync.rs`, `lib.js` |
 | Non-claims listed | Explicit §6 |
-| Remediations shipped | **P3-01 … P3-04** |
+| Remediations shipped | **P3-01 … P3-05** |
 | Firmware UUID / BLE name / flash | Untouched |
 | Runtime exploit exercise | **Not performed** |
 
