@@ -1103,7 +1103,7 @@ async function gitPush() {
 async function gitPullApply() {
   if (!isTauri()) return toast("Desktop only");
   const name = $("#gitProfileSelect")?.value;
-  if (!name) return toast("Select a profile");
+  if (!name) return toast("Select a profile first");
   if (
     state.actions.length > 0 &&
     !confirm(`Pull & replace live MCC store with profile "${name}"?`)
@@ -1111,9 +1111,26 @@ async function gitPullApply() {
     return;
   }
   try {
-    const store = await tauriInvoke("git_sync_pull_apply", { name });
+    const result = await tauriInvoke("git_sync_pull_apply", { name });
+    // Backward-compatible: older builds returned the store directly.
+    const store = result?.store ?? result;
     applyStoreFromRust(store);
-    toast(`Applied profile "${name}"`);
+    renderPadGrid();
+    const pullMsg = result?.pullMessage || result?.pull_message || "";
+    const count =
+      result?.actionCount ??
+      result?.action_count ??
+      store?.actions?.length ??
+      state.actions.length;
+    const unchanged = !!(result?.unchanged);
+    const profile = result?.profile || name;
+    if (unchanged) {
+      toast(
+        `Applied "${profile}" (${count} actions) — already matched live store. ${pullMsg}`.trim()
+      );
+    } else {
+      toast(`Applied "${profile}" (${count} actions). ${pullMsg}`.trim());
+    }
     await refreshGitSyncStatus();
   } catch (e) {
     toast(String(e));

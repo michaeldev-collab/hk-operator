@@ -711,24 +711,44 @@ async fn git_sync_push_profile(
     Ok(format!("Wrote {} · {push}", path.display()))
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PullApplyResult {
+    store: Store,
+    profile: String,
+    action_count: usize,
+    /// Git pull outcome (success text, or "pull failed: … (applied local copy)").
+    pull_message: String,
+    /// True when applied profile matches the previous live store (nothing visible changed).
+    unchanged: bool,
+}
+
 #[tauri::command]
 async fn git_sync_pull_apply(
     state: State<'_, Arc<AppState>>,
     name: String,
-) -> Result<Store, String> {
+) -> Result<PullApplyResult, String> {
     let dir = config_dir_from_store(&state.store_path);
-    let _ = git_sync::pull(&dir); // best-effort; still apply local copy if offline
+    let pull_message = match git_sync::pull(&dir) {
+        Ok(m) => m,
+        Err(e) => format!("pull failed: {e} (applied local copy)"),
+    };
     let raw = git_sync::read_profile_file(&dir, &name)?;
     let profile: ProfileFile = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
+    let action_count = profile.actions.len();
     let mut store = state.store.lock().await;
+    let before = serde_json::to_string(&*store).unwrap_or_default();
     apply_profile_file(&mut store, profile);
     store.save(&state.store_path)?;
     let out = store.clone();
+    let after = serde_json::to_string(&out).unwrap_or_default();
+    let unchanged = before == after;
     drop(store);
     let mut runtime = state.composer.lock().await;
     *runtime = ComposerRuntime::default();
     let mut settings = git_sync::load_settings(&dir);
-    settings.active_profile = Some(git_sync::sanitize_profile_name(&name)?);
+    let clean_name = git_sync::sanitize_profile_name(&name)?;
+    settings.active_profile.replace(clean_name.clone());
     settings.last_pull_at = Some(
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -736,7 +756,13 @@ async fn git_sync_pull_apply(
             .unwrap_or(0),
     );
     let _ = git_sync::save_settings(&dir, &settings);
-    Ok(out)
+    Ok(PullApplyResult {
+        store: out,
+        profile: clean_name,
+        action_count,
+        pull_message,
+        unchanged,
+    })
 }
 
 #[tauri::command]
