@@ -60,7 +60,8 @@ localStorage.removeItem("hk.operator.actions.v1"); location.reload();
 ```
 
 ## Known limitations (not failures)
-- Commands are copy-only; the app never executes anything (by design).
-- Single browser/profile storage; use Export/Import to move data.
+- **Browser-only mode** is catalog + copy/open — it does not run shell commands.
+- **Desktop (Tauri) mode** can execute `command` / `path` actions only after explicit **Allow shell** (per-action allowlist).
+- Single browser/profile storage in browser mode; desktop uses `~/.config/hk-operator/`. Use Export/Import or Git sync to move data.
 - **Import is destructive** — it replaces all current actions (after a confirm
   prompt). Export first to back up.

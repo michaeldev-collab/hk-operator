@@ -38,19 +38,23 @@ pub struct GitSyncStatus {
 fn run_git(repo: &Path, args: &[&str]) -> Result<String, String> {
     let mut cmd = Command::new("git");
     cmd.arg("-C").arg(repo).args(args);
-    // Prefer account-wide GitHub key when present (workspace deploy key stays on Host github.com).
-    let account_key = dirs::home_dir()
-        .map(|h| h.join(".ssh/id_ed25519_github_account"))
-        .filter(|p| p.exists());
-    if let Some(key) = account_key {
-        let ssh = format!(
-            "ssh -F /dev/null -o IdentitiesOnly=yes -i {} -o UserKnownHostsFile={}/.ssh/known_hosts",
-            key.display(),
-            dirs::home_dir()
-                .unwrap_or_else(|| PathBuf::from("/tmp"))
-                .display()
-        );
-        cmd.env("GIT_SSH_COMMAND", ssh);
+    // Prefer GIT_SSH_COMMAND from the environment. Otherwise optional
+    // HK_GIT_SSH_IDENTITY may point at an identity file (operator-local).
+    if std::env::var_os("GIT_SSH_COMMAND").is_none() {
+        if let Ok(identity) = std::env::var("HK_GIT_SSH_IDENTITY") {
+            let key = PathBuf::from(identity.trim());
+            if key.is_file() {
+                let known = dirs::home_dir()
+                    .unwrap_or_else(|| PathBuf::from("/tmp"))
+                    .join(".ssh/known_hosts");
+                let ssh = format!(
+                    "ssh -F /dev/null -o IdentitiesOnly=yes -i {} -o UserKnownHostsFile={}",
+                    key.display(),
+                    known.display()
+                );
+                cmd.env("GIT_SSH_COMMAND", ssh);
+            }
+        }
     }
     let out = cmd.output().map_err(|e| format!("git failed to start: {e}"))?;
     let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();

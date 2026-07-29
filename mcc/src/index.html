@@ -6,7 +6,7 @@
     <title>HK Operator</title>
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
-    <link rel="stylesheet" href="./styles.css?v=6p7" />
+    <link rel="stylesheet" href="./styles.css?v=6p8" />
   </head>
   <body>
     <header class="topbar">
@@ -76,7 +76,7 @@
       <div class="pad-head">
         <div>
           <h2>Git config sync</h2>
-          <p class="sub">Clone lives under <code>~/.config/…/hk-config/</code>. Pull a profile to apply it; push sends the current store.</p>
+          <p class="sub">Clone lives under <code>~/.config/…/hk-config/</code>. Select a profile, then Pull &amp; apply (pulls git, then replaces the live store). Push current as… writes + pushes.</p>
         </div>
         <div class="pad-actions">
           <button id="gitSyncRefreshBtn" class="btn" type="button">Refresh</button>
@@ -103,7 +103,7 @@
         <button id="gitPullApplyBtn" class="btn primary" type="button">Pull &amp; apply</button>
         <button id="gitPushProfileBtn" class="btn primary" type="button">Push current as…</button>
       </div>
-      <p class="pad-hint">Needs <code>git</code> + <code>gh</code> on PATH. SSH uses <code>~/.ssh/id_ed25519_github_account</code> when present.</p>
+      <p class="pad-hint">Needs <code>git</code> + <code>gh</code> on PATH. Uses <code>GIT_SSH_COMMAND</code> or optional <code>HK_GIT_SSH_IDENTITY</code> when set; otherwise your default SSH agent/config.</p>
     </section>
 
       <input id="search" class="search" type="search" aria-label="Search actions by name, content, or tags" placeholder="Search name, content, tags…  (Enter copies top result)" />
@@ -167,6 +167,6 @@
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-    <script type="module" src="./app.js?v=6p7"></script>
+    <script type="module" src="./app.js?v=6p8"></script>
   </body>
 </html>
