@@ -9,7 +9,9 @@
     "tauri": "tauri",
     "probe": "cargo run -p cyberdeck-probe --",
     "test:js": "node test/smoke.mjs",
-    "test:rust": "cargo test -p cyberdeck-ble"
+    "test:rust": "cargo test -p cyberdeck-ble",
+    "test:harness": "node test/verification/harness.mjs",
+    "test": "npm run test:js && npm run test:rust && npm run test:harness"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2"

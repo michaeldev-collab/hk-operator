@@ -1,6 +1,6 @@
 # HK Operator — Portfolio Engineering Plan
 
-> Status: **Phase 0 baseline** (committed inventory).  
+> Status: **Phase 0 complete · Phase 1 harness stubs landed**.  
 > Repo: public `michaeldev-collab/hk-operator`  
 > Date: 2026-07-29  
 > Constraint: do not rewrite Git history; each future commit must be a real engineering pass.
@@ -120,6 +120,8 @@ Cyberpad firmware  -- BLE HID + GATT -->  BlueZ
 ### Phase 1 — End-to-end verification harness
 
 Prove practical paths: press → FW → BLE/GATT → BlueZ → Rust → binding → dispatch → visible host effect. Separate automated HW-independent tests, HITL, manual acceptance, and publishable redacted evidence.
+
+**Stubs landed:** [`docs/verification/harness.md`](./verification/harness.md), `mcc/test/verification/harness.mjs`, `cyberdeck-ble` verification stub tests. Run `cd mcc && npm run test:harness`.
 
 ### Phase 2 — Protocol and dispatcher regression tests
 
