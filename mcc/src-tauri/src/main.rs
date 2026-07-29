@@ -4,7 +4,9 @@
 
 mod composer;
 mod dispatch;
+mod fire_api;
 mod git_sync;
+mod profile_apply;
 
 use composer::{
     apply_composer_press, reset_composer_runtime, try_lock_composer, ComposerConfig,
@@ -14,6 +16,11 @@ use cyberdeck_ble::{
     CyberdeckPad, HotkeySlot, MacroEvent, PadSlots, PadStatus, MODE_HID, MODE_MACRO,
 };
 use dispatch::{command_gate, unknown_type_err, url_gate};
+use fire_api::{
+    classify_fire_route, fire_curl_exec, fire_token_authorized, load_or_create_fire_token,
+    FireRoute,
+};
+use profile_apply::{merge_allowlist_after_profile, ProfileApplyStats};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -95,6 +102,8 @@ struct AppState {
     store: Mutex<Store>,
     listen_stop: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
     composer: Mutex<ComposerRuntime>,
+    /// Localhost `/fire/*` bearer token (also written under config dir).
+    fire_token: String,
 }
 
 fn config_path() -> PathBuf {
@@ -521,7 +530,8 @@ fn config_dir_from_store(store_path: &PathBuf) -> PathBuf {
         .to_path_buf()
 }
 
-fn apply_profile_file(store: &mut Store, profile: ProfileFile) {
+fn apply_profile_file(store: &mut Store, profile: ProfileFile) -> ProfileApplyStats {
+    let profile_allowed = profile.allowed_commands;
     store.actions = profile.actions;
     store.pad_bindings = profile.pad_bindings;
     store.pad_preset_names = profile.pad_preset_names;
@@ -530,7 +540,9 @@ fn apply_profile_file(store: &mut Store, profile: ProfileFile) {
     } else {
         profile.composers
     };
-    store.allowed_commands = profile.allowed_commands;
+    let action_ids: HashSet<String> = store.actions.iter().map(|a| a.id.clone()).collect();
+    // P3-02: never install allowlist from portable profile / git apply.
+    merge_allowlist_after_profile(&mut store.allowed_commands, &action_ids, &profile_allowed)
 }
 
 #[tauri::command]
@@ -604,6 +616,8 @@ struct PullApplyResult {
     pull_message: String,
     /// True when applied profile matches the previous live store (nothing visible changed).
     unchanged: bool,
+    /// Count of `allowedCommands` entries in the profile that were ignored (P3-02).
+    profile_allowlist_ignored: usize,
 }
 
 #[tauri::command]
@@ -621,7 +635,7 @@ async fn git_sync_pull_apply(
     let action_count = profile.actions.len();
     let mut store = state.store.lock().await;
     let before = serde_json::to_string(&*store).unwrap_or_default();
-    apply_profile_file(&mut store, profile);
+    let apply_stats = apply_profile_file(&mut store, profile);
     store.save(&state.store_path)?;
     let out = store.clone();
     let after = serde_json::to_string(&out).unwrap_or_default();
@@ -645,6 +659,7 @@ async fn git_sync_pull_apply(
         action_count,
         pull_message,
         unchanged,
+        profile_allowlist_ignored: apply_stats.profile_allowlist_ignored,
     })
 }
 
@@ -735,6 +750,7 @@ async fn fire_binding(
 }
 
 fn spawn_localhost_fire_api(app: AppHandle, state: Arc<AppState>) {
+    let token = state.fire_token.clone();
     tauri::async_runtime::spawn(async move {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         use tokio::net::TcpListener;
@@ -746,34 +762,47 @@ fn spawn_localhost_fire_api(app: AppHandle, state: Arc<AppState>) {
                 return;
             }
         };
-        eprintln!("[mcc] localhost fire API on http://127.0.0.1:17321/fire/{{p}}-{{a}}");
+        eprintln!(
+            "[mcc] localhost fire API on http://127.0.0.1:17321/ (health) and POST /fire/{{p}}-{{a}} with X-HK-Fire-Token"
+        );
         loop {
             let Ok((mut sock, _)) = listener.accept().await else {
                 continue;
             };
-            let mut buf = vec![0u8; 1024];
+            let mut buf = vec![0u8; 8192];
             let n = sock.read(&mut buf).await.unwrap_or(0);
             let req = String::from_utf8_lossy(&buf[..n]);
-            let mut key = None;
-            for line in req.lines() {
-                if let Some(rest) = line.strip_prefix("POST /fire/") {
-                    let path = rest.split_whitespace().next().unwrap_or("");
-                    key = Some(path.trim_matches('/').to_string());
-                    break;
+            let (status, body) = match classify_fire_route(&req) {
+                FireRoute::Health => (200u16, "ok".to_string()),
+                FireRoute::FireGetRejected => (
+                    405,
+                    "method not allowed: use POST /fire/{{key}} with X-HK-Fire-Token".into(),
+                ),
+                FireRoute::Fire { key } => {
+                    if !fire_token_authorized(&req, &token) {
+                        (
+                            401,
+                            "unauthorized: set X-HK-Fire-Token (see ~/.config/hk-operator/fire_token)"
+                                .into(),
+                        )
+                    } else {
+                        (200, fire_binding_key(&state, &app, &key).await)
+                    }
                 }
-                if let Some(rest) = line.strip_prefix("GET /fire/") {
-                    let path = rest.split_whitespace().next().unwrap_or("");
-                    key = Some(path.trim_matches('/').to_string());
-                    break;
-                }
-            }
-            let body = if let Some(k) = key {
-                fire_binding_key(&state, &app, &k).await
-            } else {
-                "usage: POST /fire/2-0".into()
+                FireRoute::Other => (
+                    400,
+                    "usage: POST /fire/2-0 with header X-HK-Fire-Token".into(),
+                ),
+            };
+            let reason = match status {
+                200 => "OK",
+                400 => "Bad Request",
+                401 => "Unauthorized",
+                405 => "Method Not Allowed",
+                _ => "Error",
             };
             let resp = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                "HTTP/1.1 {status} {reason}\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                 body.len(),
                 body
             );
@@ -787,7 +816,7 @@ fn spawn_localhost_fire_api(app: AppHandle, state: Arc<AppState>) {
 /// Plasma often ignores F13+ from BLE keyboards, so we piggyback on the user's
 /// existing Ctrl+Alt+1/2/3 service shortcuts (net.local.open-*) by pointing
 /// their Exec at the localhost fire API. Pad preset 3 should be HID Ctrl+Alt+N.
-fn install_kde_fire_shortcuts() {
+fn install_kde_fire_shortcuts(token: &str) {
     let apps = dirs::data_local_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join("applications");
@@ -800,13 +829,14 @@ fn install_kde_fire_shortcuts() {
     ];
     for (i, fkey, slot) in fkeys {
         let path = apps.join(format!("net.local.mcc-macro-{i}.desktop"));
+        let exec = fire_curl_exec(slot, token);
         let body = format!(
             "[Desktop Entry]\n\
 Type=Application\n\
 Name=MCC Pad Macro {slot}\n\
 NoDisplay=true\n\
 StartupNotify=false\n\
-Exec=curl -s -X POST http://127.0.0.1:17321/fire/{slot}\n\
+Exec={exec}\n\
 X-KDE-GlobalAccel-CommandShortcut=true\n\
 X-KDE-Shortcuts={fkey}\n"
         );
@@ -820,13 +850,14 @@ X-KDE-Shortcuts={fkey}\n"
     ];
     for (file, chord, slot, name) in openers {
         let path = apps.join(file);
+        let exec = fire_curl_exec(slot, token);
         let body = format!(
             "[Desktop Entry]\n\
 Type=Application\n\
 Name={name}\n\
 NoDisplay=true\n\
 StartupNotify=false\n\
-Exec=curl -s -X POST http://127.0.0.1:17321/fire/{slot}\n\
+Exec={exec}\n\
 X-KDE-GlobalAccel-CommandShortcut=true\n\
 X-KDE-Shortcuts={chord}\n"
         );
@@ -838,12 +869,24 @@ X-KDE-Shortcuts={chord}\n"
 
 fn main() {
     let store_path = config_path();
+    let config_dir = store_path
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("."));
+    let fire_token = match load_or_create_fire_token(&config_dir) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("[mcc] fire token init failed: {e}");
+            String::new()
+        }
+    };
     let store = Store::load(&store_path);
     let state = Arc::new(AppState {
         store_path,
         store: Mutex::new(store),
         listen_stop: Mutex::new(None),
         composer: Mutex::new(ComposerRuntime::default()),
+        fire_token: fire_token.clone(),
     });
 
     tauri::Builder::default()
@@ -852,7 +895,7 @@ fn main() {
         .setup(move |app| {
             let handle = app.handle().clone();
             spawn_localhost_fire_api(handle.clone(), state.clone());
-            install_kde_fire_shortcuts();
+            install_kde_fire_shortcuts(&fire_token);
             ensure_ydotoold();
             // Also keep BLE notify listen as secondary (works after firmware fix).
             let st = state.clone();

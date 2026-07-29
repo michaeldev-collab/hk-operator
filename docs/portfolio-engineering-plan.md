@@ -1,6 +1,6 @@
 # HK Operator — Portfolio Engineering Plan
 
-> Status: **Phase 0–3 complete** (inventory, harness, HW-independent regressions, sanitized threat model).  
+> Status: **Phase 0–3 complete · Phase 4 started** (P3-01/P3-02 remediated).  
 > Repo: public `michaeldev-collab/hk-operator`  
 > Date: 2026-07-29  
 > Constraint: do not rewrite Git history; each future commit must be a real engineering pass.
@@ -138,6 +138,8 @@ Docs-only commit: assets, actors, trust boundaries, attack scenarios, STRIDE-equ
 ### Phase 4 — Security remediation
 
 Separate commit(s) from Phase 3. Each finding: reference, code change, regression test, docs, residual risk. Anticipate (only if confirmed): structured process args, stronger profile validation, atomic config + last-known-good, git remote validation, redacted logs, protocol pre-checks.
+
+**Started:** P3-01 (fire API token + POST-only fire) and P3-02 (ignore profile `allowedCommands` on apply) remediated. Remaining: P3-03…P3-09.
 
 ### Phase 5 — Continuous integration
 

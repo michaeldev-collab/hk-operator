@@ -1,13 +1,13 @@
 # HK Operator — sanitized threat model & security review
 
-> **Phase 3** · docs only · 2026-07-29  
+> **Phase 3** review · **Phase 4** remediations started 2026-07-29  
 > Repo: public `michaeldev-collab/hk-operator`  
 > Method: grey-box code review of MCC Tauri host, `cyberdeck-ble`, frontend
-> glue, and git sync. **No remediations in this commit.**  
+> glue, and git sync.  
 > Confidence: high on cited paths; no runtime penetration test performed.
 
-Do **not** claim controls that are not in code. Residual findings are a Phase 4
-backlog — see §8.
+Do **not** claim controls that are not in code. Findings table marks remediated
+items; remaining backlog is still Phase 4.
 
 ## 1. Scope
 
@@ -69,6 +69,8 @@ Cyberpad FW ──BLE HID+GATT──► BlueZ ──► MCC (Tauri)
 | Control | Where |
 | --- | --- |
 | Fire API binds **localhost only** | `TcpListener::bind("127.0.0.1:17321")` in `spawn_localhost_fire_api` |
+| Fire `/fire/*` requires shared token; GET fire rejected; `/` health open | `fire_api` + `X-HK-Fire-Token` / Bearer; token file `fire_token` mode 0600 |
+| Profile / git apply **does not** install `allowedCommands` | `profile_apply::merge_allowlist_after_profile` via `apply_profile_file` |
 | URL actions require `http://` or `https://` prefix | `dispatch::url_gate` → `execute_action` `"url"` |
 | UI URL validation (case-insensitive) | `lib.js` `validateAction`; `app.js` `openUrl` |
 | Shell requires allowlisted **action id** | `dispatch::command_gate` + `Store.allowed_commands` |
@@ -86,7 +88,6 @@ Cyberpad FW ──BLE HID+GATT──► BlueZ ──► MCC (Tauri)
 
 These are **absent** — do not document them as shipped controls:
 
-- No authentication / token / peer-cred on the fire API
 - No TLS on the fire API (plain HTTP loopback)
 - No sandbox (seccomp / Landlock / bubblewrap) for `bash -lc`
 - No content hash or re-approval when an allowlisted action’s `value` changes
@@ -97,17 +98,19 @@ These are **absent** — do not document them as shipped controls:
 - No rate limit / replay protection on fire or MacroEvent
 - No application-layer BLE auth beyond BlueZ pairing
 - No redaction of BLE MAC in UI / probe output
+- Fire token may still be readable by the same local user via `fire_token` file or regenerated `.desktop` Exec lines (not a cross-user secret store)
 
 ## 7. Attack scenarios (status from code)
 
 | Scenario | Status | Basis |
 | --- | --- | --- |
 | Remote internet client hits fire API | **Mitigated** | Bind `127.0.0.1` only |
-| Local process fires bindings via loopback | **Unmitigated** | No auth; GET+POST → `fire_binding_key` |
+| Local process fires bindings via loopback without token | **Mitigated** | Token required on `POST /fire/*`; GET fire → 405 |
+| Local process with token file / desktop Exec access | **Partial** | Same-user readable secret; not cross-UID by default |
 | `ftp:` / `javascript:` URL via Rust dispatch | **Mitigated** | `url_gate` prefix check |
 | Shell with cold (non-allowlisted) id | **Mitigated** | `command_gate` |
 | Shell after allowlist + mutated `value` | **Partial** | Gate is id-only; `bash -lc` runs current value |
-| Profile / git pull pre-seeds `allowed_commands` | **Unmitigated** | `apply_profile_file` copies allowlist |
+| Profile / git pull pre-seeds `allowed_commands` | **Mitigated** | Apply ignores profile allowlist; retains live ∩ action ids |
 | Profile name `../` traversal | **Mitigated** | `sanitize_profile_name` |
 | Arbitrary git remote URL | **Unmitigated** | `set_remote` trim + non-empty only |
 | BLE MacroEvent without bond | **Partial** | Relies on BlueZ; no app auth on payload |
@@ -115,12 +118,12 @@ These are **absent** — do not document them as shipped controls:
 | Cross-user keystroke via ydotool socket | **Unmitigated** | `ydotoold -P 0666` when started by MCC |
 | Import arbitrary filesystem path | **Unmitigated** | `import_profile(path)` reads caller path |
 
-## 8. Findings backlog (Phase 4 — do not fix here)
+## 8. Findings backlog (Phase 4)
 
-| ID | Severity | Evidence | Finding | Residual risk if unfixed |
+| ID | Severity | Evidence | Finding | Residual risk if unfixed / notes |
 | --- | --- | --- | --- | --- |
-| **P3-01** | High | `main.rs` `spawn_localhost_fire_api` | Fire API unauthenticated; GET+POST execute full action chain | Any local UID can trigger bound URLs/paths/clipboard/approved shell |
-| **P3-02** | High | `apply_profile_file` assigns `allowed_commands` | Import / pull-apply installs shell allowlist without re-prompt | Compromised profile/git → silent shell capability |
+| **P3-01** | High → **Remediated** | `fire_api` + `spawn_localhost_fire_api` | Token required for `POST /fire/*`; GET fire rejected; health `/` open | Residual: same-user token file / `.desktop` Exec readability |
+| **P3-02** | High → **Remediated** | `profile_apply` + `apply_profile_file` | Profile/git apply ignores `allowedCommands`; keeps live allowlist ∩ action ids | Residual: operator must re-approve shell after intentional allowlist migration |
 | **P3-03** | High | `execute_action` `"command"` → `bash -lc` | No sandbox; allowlist is action-id only, not value hash | Approved id + edited value = arbitrary shell |
 | **P3-04** | Medium | `ensure_ydotoold` `-P 0666` | World-accessible uinput control socket | Other local users/processes can inject keystrokes |
 | **P3-05** | Medium | `git_sync::set_remote` | No scheme/host allowlist on remote URL | Operator can be pointed at attacker-controlled remote |
@@ -136,9 +139,11 @@ These are **absent** — do not document them as shipped controls:
 
 ## 9. Residual risk summary
 
-HK Operator MCC is a **high-privilege local automation surface** by design: pad presses and the fire API can open URLs, paste text, and (after approval) run shell. Localhost binding and URL/allowlist gates are real. The open residual risk is **trust of local peers and of profile/git content**, plus **id-only shell approval** and **world-mode ydotool** when MCC starts the daemon.
+HK Operator MCC is a **high-privilege local automation surface** by design: pad presses and the fire API can open URLs, paste text, and (after approval) run shell. Localhost binding, fire-token gate, URL/allowlist gates, and non-import of profile allowlists are real.
 
-**Next gate (Phase 4):** remediate P3-01…P3-09 with separate commit(s), each finding → code change → regression test → doc update. Do not merge review and remediation.
+Open residual risk centers on **P3-03+** (id-only shell approval, ydotool mode, git remote validation, etc.) and same-user readability of the fire token.
+
+**Next gate:** continue Phase 4 with P3-03 (command value binding / sandbox) or P3-04 (ydotool socket mode), separate commits each.
 
 ## 10. Verification of this document
 
@@ -146,7 +151,7 @@ HK Operator MCC is a **high-privilege local automation surface** by design: pad 
 | --- | --- |
 | Controls cited exist in tree | Verified against `main.rs`, `dispatch.rs`, `composer.rs`, `git_sync.rs`, `lib.js` |
 | Non-claims listed | Explicit §6 |
-| Remediations shipped | **None** (Phase 3 docs only) |
+| Remediations shipped | **P3-01, P3-02** (this Phase 4 start) |
 | Firmware UUID / BLE name / flash | Untouched |
 | Runtime exploit exercise | **Not performed** |
 

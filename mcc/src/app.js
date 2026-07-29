@@ -1124,12 +1124,18 @@ async function gitPullApply() {
       state.actions.length;
     const unchanged = !!(result?.unchanged);
     const profile = result?.profile || name;
+    const ignored =
+      result?.profileAllowlistIgnored ?? result?.profile_allowlist_ignored ?? 0;
+    const allowNote =
+      ignored > 0
+        ? ` Shell allowlist from profile ignored (${ignored} ids) — re-approve in UI if needed.`
+        : " Shell approvals stay machine-local (profile allowlist not imported).";
     if (unchanged) {
       toast(
-        `Applied "${profile}" (${count} actions) — already matched live store. ${pullMsg}`.trim()
+        `Applied "${profile}" (${count} actions) — already matched live store. ${pullMsg}${allowNote}`.trim()
       );
     } else {
-      toast(`Applied "${profile}" (${count} actions). ${pullMsg}`.trim());
+      toast(`Applied "${profile}" (${count} actions). ${pullMsg}${allowNote}`.trim());
     }
     await refreshGitSyncStatus();
   } catch (e) {
