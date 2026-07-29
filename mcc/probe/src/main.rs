@@ -2,7 +2,10 @@
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
-use cyberdeck_ble::{CyberdeckPad, HotkeySlot, PadSlots, MODE_HID, MODE_MACRO};
+use cyberdeck_ble::{
+    pad_status_for_log, redact_ble_address, CyberdeckPad, HotkeySlot, PadSlots, MODE_HID,
+    MODE_MACRO,
+};
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
@@ -89,7 +92,7 @@ async fn main() -> Result<()> {
             } {
                 Ok(pad) => {
                     let st = pad.status().await?;
-                    println!("{}", serde_json::to_string_pretty(&st)?);
+                    println!("{}", serde_json::to_string_pretty(&pad_status_for_log(&st))?);
                 }
                 Err(e) => {
                     println!("pad: not found ({e})");
@@ -147,7 +150,7 @@ async fn main() -> Result<()> {
             let pad = open_pad(&cli.address).await?;
             println!(
                 "listening for MacroEvent on {} … (press a MACRO-mode button)",
-                pad.address
+                redact_ble_address(&pad.address.to_string())
             );
             let mut rx = pad.subscribe_macro_events().await?;
             while let Some(ev) = rx.recv().await {

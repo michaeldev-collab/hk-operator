@@ -162,6 +162,41 @@ pub struct PadStatus {
     pub info: Option<String>,
 }
 
+/// Redact a Bluetooth device address for UI/logs (P3-08).
+///
+/// Keeps the last octet so multiple pads remain distinguishable without
+/// exposing the full MAC. Non-MAC-shaped strings become fully masked.
+pub fn redact_ble_address(addr: &str) -> String {
+    let trimmed = addr.trim();
+    if trimmed.is_empty() {
+        return "(no address)".into();
+    }
+    let parts: Vec<&str> = trimmed
+        .split(|c| c == ':' || c == '-')
+        .filter(|p| !p.is_empty())
+        .collect();
+    if parts.len() == 6
+        && parts
+            .iter()
+            .all(|p| p.len() == 2 && p.chars().all(|c| c.is_ascii_hexdigit()))
+    {
+        format!("**:**:**:**:**:{}", parts[5].to_ascii_uppercase())
+    } else {
+        "**:**:**:**:**:**".into()
+    }
+}
+
+/// Clone status with a redacted address for probe/log output.
+pub fn pad_status_for_log(st: &PadStatus) -> PadStatus {
+    PadStatus {
+        address: redact_ble_address(&st.address),
+        name: st.name.clone(),
+        connected: st.connected,
+        paired: st.paired,
+        info: st.info.clone(),
+    }
+}
+
 pub struct CyberdeckPad {
     pub address: Address,
     device: Device,
@@ -293,7 +328,11 @@ impl CyberdeckPad {
         use futures_util::StreamExt;
 
         self.ensure_connected().await?;
-        println!("device {} connected={}", self.address, self.device.is_connected().await?);
+        println!(
+            "device {} connected={}",
+            redact_ble_address(&self.address.to_string()),
+            self.device.is_connected().await?
+        );
         let svc = Uuid::parse_str(SERVICE_UUID).unwrap();
         let evt = Uuid::parse_str(MACRO_EVENT_UUID).unwrap();
         for service in self.device.services().await? {
@@ -387,6 +426,29 @@ mod tests {
         assert_eq!(back.r#mod, 0x01);
         assert_eq!(back.key, 0x28);
         assert_eq!(back.label, "Enter");
+    }
+
+    #[test]
+    fn redact_ble_address_keeps_last_octet() {
+        assert_eq!(
+            redact_ble_address("aa:bb:cc:dd:ee:ff"),
+            "**:**:**:**:**:FF"
+        );
+        assert_eq!(
+            redact_ble_address("AA-BB-CC-DD-EE-12"),
+            "**:**:**:**:**:12"
+        );
+        assert_eq!(redact_ble_address(""), "(no address)");
+        assert_eq!(redact_ble_address("not-a-mac"), "**:**:**:**:**:**");
+        let logged = pad_status_for_log(&PadStatus {
+            address: "11:22:33:44:55:66".into(),
+            name: Some("Cyberdeck Pad".into()),
+            connected: true,
+            paired: true,
+            info: None,
+        });
+        assert_eq!(logged.address, "**:**:**:**:**:66");
+        assert!(!logged.address.contains("11:22"));
     }
 
     #[test]

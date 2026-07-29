@@ -98,7 +98,6 @@ These are **absent** — do not document them as shipped controls:
 - No encryption of store/profiles at rest
 - No rate limit / replay protection on fire or MacroEvent
 - No application-layer BLE auth beyond BlueZ pairing
-- No redaction of BLE MAC in UI / probe output
 - Fire token may still be readable by the same local user via `fire_token` file or regenerated `.desktop` Exec lines (not a cross-user secret store)
 
 ## 7. Attack scenarios (status from code)
@@ -118,7 +117,7 @@ These are **absent** — do not document them as shipped controls:
 | BLE MacroEvent without bond | **Partial** | Relies on BlueZ; no app auth on payload |
 | HID typing with MCC closed | **By design** | Firmware HID mode |
 | Cross-user keystroke via ydotool socket | **Mitigated** | MCC starts `ydotoold -P 0600`; refuses non-owner sockets; default path under `$XDG_RUNTIME_DIR` |
-| Import arbitrary filesystem path | **Mitigated** | `resolve_confined_profile_path` — only `profiles/` and `hk-config/profiles/` under config dir |
+| BLE MAC in UI / probe logs | **Mitigated** | `redact_ble_address` / `redactBleAddress` — last octet only in status UI and probe prints |
 
 ## 8. Findings backlog (Phase 4)
 
@@ -131,7 +130,7 @@ These are **absent** — do not document them as shipped controls:
 | **P3-05** | Medium → **Remediated** | `git_sync::validate_git_remote_url` | Only `github.com` HTTPS/SSH remotes; reject http/file/other hosts | Residual: GitHub itself can still host malicious profile content after pull (P3-02 still applies) |
 | **P3-06** | Medium → **Remediated** | `profile_path` + `import_profile` | Import confined to config `profiles/` and `hk-config/profiles/`; rejects traversal / non-JSON / outside roots | Residual: hostile JSON *inside* allowed dirs still applies actions (P3-02 allowlist scrub still applies) |
 | **P3-07** | Medium → **Remediated** | `retain_allowlist_for_save` + `save_store` | Incoming allowlist ignored; live entries retained ∩ action ids; expand only via `allow_command` | Residual: UI state can claim approvals until reload; re-create same id+value reuses prior approval |
-| **P3-08** | Low | `PadStatus.address`; UI status; probe logs | BLE MAC displayed / printed without redaction | Shoulder-surf / log leakage of device address |
+| **P3-08** | Low → **Remediated** | `redact_ble_address` + UI/probe | Status line and probe logs show `**:**:**:**:**:XX`; full MAC kept in-process for GATT | Residual: full MAC still in live memory / `--address` CLI arg / BlueZ tools |
 | **P3-09** | Low | `url_gate` case-sensitive vs JS regex; MacroEvent no index bounds | Edge inconsistencies | Low direct impact |
 
 ### Severity notes
@@ -143,9 +142,9 @@ These are **absent** — do not document them as shipped controls:
 
 HK Operator MCC is a **high-privilege local automation surface** by design: pad presses and the fire API can open URLs, paste text, and (after approval) run shell. Localhost binding, fire-token gate, URL/allowlist gates, and non-import of profile allowlists are real.
 
-Open residual risk centers on **P3-08+** (BLE MAC redaction, minor gate quirks), same-user fire-token readability, and lack of OS sandbox around `bash -lc`.
+Open residual risk centers on **P3-09** (URL/MacroEvent edge quirks), same-user fire-token readability, and lack of OS sandbox around `bash -lc`.
 
-**Next gate:** continue Phase 4 with P3-08 (BLE MAC redaction) or P3-09 (URL/MacroEvent edge cases), separate commits each.
+**Next gate:** continue Phase 4 with P3-09 (URL case / MacroEvent bounds), or close Phase 4 and move to Phase 5 CI.
 
 ## 10. Verification of this document
 
@@ -153,7 +152,7 @@ Open residual risk centers on **P3-08+** (BLE MAC redaction, minor gate quirks),
 | --- | --- |
 | Controls cited exist in tree | Verified against `main.rs`, `dispatch.rs`, `composer.rs`, `git_sync.rs`, `lib.js` |
 | Non-claims listed | Explicit §6 |
-| Remediations shipped | **P3-01 … P3-07** |
+| Remediations shipped | **P3-01 … P3-08** |
 | Firmware UUID / BLE name / flash | Untouched |
 | Runtime exploit exercise | **Not performed** |
 

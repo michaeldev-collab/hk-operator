@@ -11,6 +11,7 @@ import {
   commandValueFingerprint,
   normalizeAllowedCommands,
   isCommandAllowed,
+  redactBleAddress,
 } from "./lib.js";
 import { SEED_ACTIONS, SEED_PAD_BINDINGS } from "./seed.js";
 
@@ -762,7 +763,8 @@ async function refreshPad() {
     const st = await tauriInvoke("pad_status", { address: state.padAddress });
     state.padAddress = st.address;
     // Live BLE advertise name is a compatibility identifier (legacy: Cyberdeck Pad).
-    const line = `${st.name || "Cyberdeck Pad"} · ${st.address} · ${
+    // Full MAC stays in state for GATT ops; UI shows redacted form (P3-08).
+    const line = `${st.name || "Cyberdeck Pad"} · ${redactBleAddress(st.address)} · ${
       st.connected ? "connected" : "disconnected"
     }${st.paired ? " · paired" : ""}${st.info ? " · " + st.info : ""}`;
     $("#padStatusLine").textContent = line;

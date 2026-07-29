@@ -57,6 +57,23 @@ export function isCommandAllowed(action, allowedCommands = {}) {
   return fp === commandValueFingerprint(action.value);
 }
 
+/**
+ * Redact a Bluetooth MAC for UI display (P3-08).
+ * Must match Rust `redact_ble_address` in cyberdeck-ble (last octet kept).
+ */
+export function redactBleAddress(addr) {
+  const trimmed = String(addr ?? "").trim();
+  if (!trimmed) return "(no address)";
+  const parts = trimmed.split(/[:\-]/).filter(Boolean);
+  if (
+    parts.length === 6 &&
+    parts.every((p) => /^[0-9A-Fa-f]{2}$/.test(p))
+  ) {
+    return `**:**:**:**:**:${parts[5].toUpperCase()}`;
+  }
+  return "**:**:**:**:**:**";
+}
+
 export function normalizeComposers(raw) {
   const base = defaultComposers();
   if (!raw || typeof raw !== "object") return base;
