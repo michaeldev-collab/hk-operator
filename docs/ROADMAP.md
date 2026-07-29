@@ -13,5 +13,5 @@
 - [x] Rename runtime config dir to `~/.config/hk-operator/` in MCC binary
 - [x] Git-aware profile sync UI (MCC panel)
 - [ ] Enter-key composer reset (global hotkey)
-- [ ] Phase 7 execute — version align, tag release `.deb`, checksums on Release page
+- [ ] Phase 7 execute — tag-triggered `.deb` upload, release notes + checksums (Cargo version aligned)
 - [ ] Phase 8 execute — KiCad footprints/Gerbers, NeoPixel power decision, case dims lock to PCB

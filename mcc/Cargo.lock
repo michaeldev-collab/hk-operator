@@ -659,7 +659,7 @@ dependencies = [
 
 [[package]]
 name = "cyberdeck-ble"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bluer",
  "futures-util",
@@ -672,7 +672,7 @@ dependencies = [
 
 [[package]]
 name = "cyberdeck-probe"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "bluer",
@@ -2084,7 +2084,7 @@ dependencies = [
 
 [[package]]
 name = "mcc-desktop"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "arboard",

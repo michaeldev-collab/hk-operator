@@ -23,7 +23,7 @@ bond verification.
 | Surface | Current value | Notes |
 | --- | --- | --- |
 | MCC UI / npm / Tauri `version` | `0.2.0` | `mcc/package.json`, `tauri.conf.json` |
-| Cargo workspace `version` | `0.1.0` | Drift vs app — **must align before first tagged release** |
+| Cargo workspace `version` | `0.2.0` | Aligned with npm/Tauri/`FW_INFO` (Phase 7 step 1) |
 | Bundle target | `deb` only | `tauri.conf.json` → `bundle.targets` |
 | Firmware info string | `Cyberdeck Pad Hybrid v0.2.0` | `FW_INFO` in sketch; do not rename casually |
 | BLE advertise name | `Cyberdeck Pad` | Compatibility identifier |
@@ -44,15 +44,14 @@ HK Operator release  vX.Y.Z
 
 Rules:
 
-1. **First public package tag:** prefer `v0.2.0` (matches current app/FW_INFO) after
-   bumping Cargo workspace from `0.1.0` → `0.2.0`.
+1. **First public package tag:** prefer `v0.2.0` (MCC app + crates + FW_INFO already on `0.2.0`).
 2. Protocol-breaking changes (slot layout, UUID, preset count) → **major** or explicit
    `PROTOCOL.md` bump + matrix row; never silent.
 3. BLE name / UUID changes remain a **CEO/protocol gate** — out of scope for routine releases.
 
 ### Pre-tag checklist (version)
 
-- [ ] `mcc/Cargo.toml` workspace.package.version == Tauri/npm version
+- [x] `mcc/Cargo.toml` workspace.package.version == Tauri/npm version (`0.2.0`)
 - [ ] `FW_INFO` matches release notes firmware line (or matrix documents intentional lag)
 - [ ] `mcc/CHANGELOG.md` section for the tag
 - [ ] Git tag `vX.Y.Z` on `main` after CI green
@@ -245,7 +244,7 @@ require a one-shot migrate note in the release.
 
 | Order | Task | Acceptance |
 | --- | --- | --- |
-| 1 | Align Cargo workspace version to `0.2.0` | `cargo metadata` shows 0.2.0 |
+| 1 | Align Cargo workspace version to `0.2.0` | **Done** — workspace `0.2.0` |
 | 2 | Add `docs/COMPATIBILITY.md` generated/filled from §6 | Linked from README |
 | 3 | Script `scripts/release-checksums.sh` for `.ino` sha256 | Prints table for notes |
 | 4 | Tag-triggered GH Action: build + upload `.deb` | Release asset present |
