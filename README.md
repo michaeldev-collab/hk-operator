@@ -74,6 +74,7 @@ set a remote (or create a private repo via `gh`), then **Push current as…** /
 - [Cyberpad BLE protocol](./mcc/protocol/PROTOCOL.md)
 - [MCC](./mcc/README.md)
 - [Configuration examples](./config/examples/README.md)
+- [Portfolio engineering plan](./docs/portfolio-engineering-plan.md)
 - [V1 hardware, summarized](./docs/ESP-AND-HOT-GLUE.md)
 
 ## License
