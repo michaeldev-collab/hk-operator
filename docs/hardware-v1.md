@@ -43,10 +43,12 @@ A solid common-ground bus serves the switch matrix. On perfboard it reduces
 star-ground spaghetti, keeps returns short, and makes point-to-point wiring
 easier to reason about when revising a one-day build.
 
-The photo below is the **ground bar bus** — hot glue peeled back to show the
-soldered edge rail that ties the switch grounds together.
+The photo below is the **ground bar bus** — the soldered edge rail that ties
+the switch grounds together. The hot glue is peeling because of how much the
+pad has been used day-to-day (wear from handling and palm contact), not because
+it was staged for the shot; that wear is what exposed the bus.
 
-![Ground bar bus revealed under peeled hot glue](../media/hardware/cyberpad-v1/ground-bus.jpg)
+![Ground bar bus visible where heavy use peeled the hot glue](../media/hardware/cyberpad-v1/ground-bus.jpg)
 
 ## Underside and hot-glue chassis
 
@@ -71,7 +73,7 @@ with the ground bus running through the glue line:
 | --- | --- | --- |
 | Top view | [`media/hardware/cyberpad-v1/top.jpg`](../media/hardware/cyberpad-v1/top.jpg) | Overhead with keyboard for scale |
 | Underside wiring | [`media/hardware/cyberpad-v1/underside.jpg`](../media/hardware/cyberpad-v1/underside.jpg) | Point-to-point + glue potting |
-| Copper / solder ground bus | [`media/hardware/cyberpad-v1/ground-bus.jpg`](../media/hardware/cyberpad-v1/ground-bus.jpg) | **Glue peeled up** to show the ground bar bus |
+| Copper / solder ground bus | [`media/hardware/cyberpad-v1/ground-bus.jpg`](../media/hardware/cyberpad-v1/ground-bus.jpg) | Ground bar bus; glue peeled from daily use |
 | Hot-glue ergonomic support | [`media/hardware/cyberpad-v1/hot-glue-rest.jpg`](../media/hardware/cyberpad-v1/hot-glue-rest.jpg) | Side profile / glue chassis |
 | Desk scale | [`media/hardware/cyberpad-v1/desk-scale.jpg`](../media/hardware/cyberpad-v1/desk-scale.jpg) | Lit green LED + keyboard |
 | Top angled | [`media/hardware/cyberpad-v1/top-angled.jpg`](../media/hardware/cyberpad-v1/top-angled.jpg) | Alternate angle |
