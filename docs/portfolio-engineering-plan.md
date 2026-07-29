@@ -1,6 +1,6 @@
 # HK Operator — Portfolio Engineering Plan
 
-> Status: **Phase 0 complete · Phase 1 harness stubs landed**.  
+> Status: **Phase 0–2 complete** (inventory, harness stubs, HW-independent regressions).  
 > Repo: public `michaeldev-collab/hk-operator`  
 > Date: 2026-07-29  
 > Constraint: do not rewrite Git history; each future commit must be a real engineering pass.
@@ -126,6 +126,8 @@ Prove practical paths: press → FW → BLE/GATT → BlueZ → Rust → binding 
 ### Phase 2 — Protocol and dispatcher regression tests
 
 Deterministic coverage for codec/malformed payloads, profile shape, URL schemes, allowlist, composer rotate/timeout/stack, unknown action types. Split commits by subsystem.
+
+**Landed:** `slots_codec` + `mcc-desktop` `dispatch`/`composer` pure modules + JS `dispatch`/`composer`/`config_profile` runners. Run `cd mcc && npm test`.
 
 ### Phase 3 — Threat model and sanitized security review
 

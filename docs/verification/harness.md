@@ -1,45 +1,43 @@
-# Verification harness (Phase 1 stubs)
+# Verification harness
 
-Hardware-independent scaffolding for proving the HK Operator event path where
+Hardware-independent coverage for proving the HK Operator event path where
 practical:
 
 ```text
 physical press → firmware → BLE/GATT → BlueZ → Rust → binding → dispatch → host effect
 ```
 
-Full regression depth is Phase 2. This document and the stub runners define
-**what** will be verified and **how evidence is classified** — without claiming
-unrun paths are green.
+Phase 1 defined the inventory. Phase 2 filled HW-independent regressions for
+codec, dispatch gates, and composer FSM. HITL paths remain listed, not green.
 
 ## Layers
 
 | Layer | Runner | Hardware | Status |
 | --- | --- | --- | --- |
-| JS logic smoke | `npm run test:js` | No | Existing |
-| BLE slot codec unit | `npm run test:rust` | No | Existing |
-| Harness inventory stub | `npm run test:harness` | No | **Stub (this phase)** |
-| Protocol/dispatch/composer regressions | Phase 2 commits | No | Not started |
+| JS logic smoke + Phase 2 schema | `npm run test:js` | No | Active |
+| BLE slot codec + desktop pure modules | `npm run test:rust` | No | Active |
+| Harness inventory | `npm run test:harness` | No | Active |
 | HITL probe checklist | Manual / optional | Yes | Template only |
 | Public evidence capture | Phase 6 | Capture only | Not started |
 
-## Capability matrix (stubs)
+## Capability matrix
 
-| ID | Capability | Automated now | Harness stub | HITL later | Public evidence |
-| --- | --- | --- | --- | --- | --- |
-| V-DISCOVER | Device discovery by compat name | — | listed | Y | redacted |
-| V-BOND | Reuse existing HID bond (no 2nd link) | — | listed | Y | note |
-| V-INFO | Read firmware info characteristic | — | listed | Y | redacted string only |
-| V-SLOTS-R | Read 486-byte slots | pack unit only | listed | Y | — |
-| V-SLOTS-W | Write slots + round-trip | pack unit only | listed | Y | — |
-| V-MACRO | MacroEvent notify receipt | — | listed | Y | GIF later |
-| V-IDX | Preset/action index bounds | — | listed | Y | — |
-| V-HID-FALLBACK | HID works with MCC closed | — | listed | Y | note |
-| V-GATT-DOWN | MCC degrades when GATT missing | — | listed | Y | note |
-| V-PROFILE-IO | Profile import/export shape | smoke partial | listed | — | example JSON |
-| V-GIT-SYNC | Pull / pull-apply messaging | — | listed | manual | sanitized |
-| V-COMPOSER | Rotate / timeout / stack | smoke partial | listed | — | GIF later |
-| V-DISPATCH | Action types + allowlist | smoke partial | listed | — | screenshot later |
-| V-FAIL | Failure reporting | — | listed | Y | — |
+| ID | Capability | Automated now | HITL later | Public evidence |
+| --- | --- | --- | --- | --- |
+| V-DISCOVER | Device discovery by compat name | — | Y | redacted |
+| V-BOND | Reuse existing HID bond (no 2nd link) | — | Y | note |
+| V-INFO | Read firmware info characteristic | — | Y | redacted string only |
+| V-SLOTS-R | Read / pack 486-byte slots | `slots_codec` | Y write | — |
+| V-SLOTS-W | Write slots + round-trip | pack unit | Y | — |
+| V-MACRO | MacroEvent bytes | `from_bytes` unit | Y notify | GIF later |
+| V-IDX | Preset/action index bounds | `PadSlots::get` | — | — |
+| V-HID-FALLBACK | HID works with MCC closed | — | Y | note |
+| V-GATT-DOWN | MCC degrades when GATT missing | — | Y | note |
+| V-PROFILE-IO | Profile shape / example hygiene | `config_profile.mjs` | import UX | example JSON |
+| V-GIT-SYNC | Pull / pull-apply messaging | — | manual | sanitized |
+| V-COMPOSER | Rotate / timeout / stack | `composer` module + JS normalize | paste HITL | GIF later |
+| V-DISPATCH | URL / allowlist / unknown type | `dispatch` module + JS schema | shell HITL | screenshot later |
+| V-FAIL | Failure reporting | gate strings | UI | — |
 
 ## Redaction rules (publishable evidence)
 
@@ -59,21 +57,16 @@ screenshots with private panels cropped.
 Use [`../mcc/docs/hw-gate.md`](../mcc/docs/hw-gate.md) as the compile/probe gate.
 Record MAC and host paths **only in private notes**, not in this repository.
 
-## Running stubs
+## Running
 
 ```bash
 cd mcc
-npm run test:js
-npm run test:rust
-npm run test:harness
+npm test
 ```
 
-`test:harness` must exit 0 while stubs are incomplete — it inventories
-capabilities and fails only if the stub file itself is broken.
-
-## Non-goals (Phase 1 stubs)
+## Non-goals
 
 - No firmware flash
 - No UUID / BLE name / `FW_INFO` changes
-- No full Phase 2 regression suites
+- No claiming HITL paths are verified
 - No CI workflow yet (Phase 5)

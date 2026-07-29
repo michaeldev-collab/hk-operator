@@ -2,11 +2,18 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod composer;
+mod dispatch;
 mod git_sync;
 
+use composer::{
+    apply_composer_press, reset_composer_runtime, try_lock_composer, ComposerConfig,
+    ComposerRuntime,
+};
 use cyberdeck_ble::{
     CyberdeckPad, HotkeySlot, MacroEvent, PadSlots, PadStatus, MODE_HID, MODE_MACRO,
 };
+use dispatch::{command_gate, unknown_type_err, url_gate};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -32,44 +39,6 @@ pub struct Action {
     pub favorite: bool,
     pub last_used: Option<String>,
     pub created_at: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ComposerConfig {
-    pub commands: Vec<String>,
-    #[serde(default = "default_separator")]
-    pub separator: String,
-    #[serde(default = "default_timeout_ms")]
-    pub timeout_ms: u64,
-    #[serde(default = "default_reset_on")]
-    pub reset_on: Vec<String>,
-}
-
-fn default_separator() -> String {
-    " ".into()
-}
-fn default_timeout_ms() -> u64 {
-    4000
-}
-fn default_reset_on() -> Vec<String> {
-    vec!["timeout".into(), "explicitClear".into()]
-}
-
-impl Default for ComposerConfig {
-    fn default() -> Self {
-        Self {
-            // Public portfolio defaults — no private board slash names.
-            commands: vec![
-                "/help".into(),
-                "/review".into(),
-                "/plan".into(),
-            ],
-            separator: default_separator(),
-            timeout_ms: default_timeout_ms(),
-            reset_on: default_reset_on(),
-        }
-    }
 }
 
 fn default_composers() -> HashMap<String, ComposerConfig> {
@@ -118,31 +87,6 @@ impl Store {
         }
         let json = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
         std::fs::write(path, json).map_err(|e| e.to_string())
-    }
-}
-
-struct ComposerRuntime {
-    /// Current preview index while picking
-    index: HashMap<String, usize>,
-    /// Last press time
-    last_press: HashMap<String, std::time::Instant>,
-    /// Bump to cancel a pending "pause = lock in" timer
-    generation: HashMap<String, u64>,
-    /// True while rotating before a pause lock-in
-    picking: HashMap<String, bool>,
-    /// How many commands locked into this compose session (for separator)
-    committed: HashMap<String, usize>,
-}
-
-impl Default for ComposerRuntime {
-    fn default() -> Self {
-        Self {
-            index: HashMap::new(),
-            last_press: HashMap::new(),
-            generation: HashMap::new(),
-            picking: HashMap::new(),
-            committed: HashMap::new(),
-        }
     }
 }
 
@@ -345,9 +289,7 @@ async fn execute_action(
 ) -> Result<String, String> {
     match action.type_.as_str() {
         "url" => {
-            if !action.value.starts_with("http://") && !action.value.starts_with("https://") {
-                return Err("Blocked: not an http(s) URL".into());
-            }
+            url_gate(&action.value)?;
             open::that(&action.value).map_err(|e| e.to_string())?;
             Ok(format!("opened {}", action.name))
         }
@@ -362,73 +304,28 @@ async fn execute_action(
             // Pause ≥ timeoutMs locks the current slash into the prompt; next
             // burst picks the following command to stack.
             let id = action.value.trim();
-            if id.is_empty() {
-                return Err("composer action needs a composer id in value (e.g. ai)".into());
-            }
+            composer::composer_precheck(id, store.composers.get(id))?;
             let cfg = store
                 .composers
                 .get(id)
                 .cloned()
-                .ok_or_else(|| format!("unknown composer \"{id}\""))?;
-            if cfg.commands.is_empty() {
-                return Err(format!("composer \"{id}\" has no commands"));
-            }
-            let len = cfg.commands.len();
-            let timeout_ms = cfg.timeout_ms.max(500);
-            let timeout = std::time::Duration::from_millis(timeout_ms);
+                .expect("composer_precheck verified composer exists");
             let now = std::time::Instant::now();
-            let was_picking = runtime.picking.get(id).copied().unwrap_or(false);
-            let committed = runtime.committed.get(id).copied().unwrap_or(0);
-
-            // Very long idle → fresh compose session
-            if let Some(last) = runtime.last_press.get(id) {
-                if now.duration_since(*last) >= timeout.saturating_mul(3) {
-                    runtime.committed.insert(id.to_string(), 0);
-                    runtime.picking.insert(id.to_string(), false);
-                    runtime.index.insert(id.to_string(), 0);
-                }
-            }
-            let committed = runtime.committed.get(id).copied().unwrap_or(committed);
-
-            let idx = if was_picking {
-                let cur = runtime.index.get(id).copied().unwrap_or(0) % len;
-                let next = (cur + 1) % len;
-                // Replace previous preview in the focused field
+            let press = apply_composer_press(id, &cfg, runtime, now)?;
+            if press.replaced_preview {
                 if let Err(e) = auto_undo() {
                     eprintln!("[mcc] composer undo failed: {e}");
                 }
-                next
-            } else {
-                0
-            };
+            }
 
-            let token = cfg.commands[idx].clone();
-            let text = if committed > 0 {
-                format!("{}{}", cfg.separator, token)
-            } else {
-                token.clone()
-            };
-
-            runtime.index.insert(id.to_string(), idx);
-            runtime.picking.insert(id.to_string(), true);
-            runtime.last_press.insert(id.to_string(), now);
-            let gen = runtime.generation.entry(id.to_string()).or_insert(0);
-            *gen += 1;
-            let my_gen = *gen;
-
-            // After idle pause, lock in current preview and end this pick burst.
+            let timeout = std::time::Duration::from_millis(press.timeout_ms);
             let id_owned = id.to_string();
+            let my_gen = press.generation;
             let st = state.clone();
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(timeout).await;
                 let mut rt = st.composer.lock().await;
-                if rt.generation.get(&id_owned).copied().unwrap_or(0) == my_gen
-                    && rt.picking.get(&id_owned).copied().unwrap_or(false)
-                {
-                    let n = rt.committed.get(&id_owned).copied().unwrap_or(0) + 1;
-                    rt.committed.insert(id_owned.clone(), n);
-                    rt.picking.insert(id_owned.clone(), false);
-                    rt.index.insert(id_owned, 0);
+                if try_lock_composer(&mut rt, &id_owned, my_gen) {
                     let _ = Command::new("notify-send")
                         .args([
                             "-a",
@@ -441,24 +338,19 @@ async fn execute_action(
             });
 
             paste_text(
-                &text,
+                &press.text,
                 &format!(
                     "{} rotate [{}] ({}/{}) — pause {}ms to lock",
                     action.name,
-                    token,
-                    idx + 1,
-                    len,
-                    timeout_ms
+                    press.token,
+                    press.idx + 1,
+                    press.len,
+                    press.timeout_ms
                 ),
             )
         }
         "command" => {
-            if !store.allowed_commands.contains(&action.id) {
-                return Err(format!(
-                    "Command \"{}\" not allowed yet — approve it in the UI first",
-                    action.name
-                ));
-            }
+            command_gate(&store.allowed_commands, &action.id, &action.name)?;
             let status = Command::new("bash")
                 .arg("-lc")
                 .arg(&action.value)
@@ -467,7 +359,7 @@ async fn execute_action(
             let _ = status; // fire-and-forget
             Ok(format!("ran {}", action.name))
         }
-        other => Err(format!("unknown action type: {other}")),
+        other => Err(unknown_type_err(other)),
     }
 }
 
@@ -518,16 +410,7 @@ async fn reset_composer(
     composer_id: Option<String>,
 ) -> Result<(), String> {
     let mut runtime = state.composer.lock().await;
-    if let Some(id) = composer_id {
-        runtime.index.insert(id.clone(), 0);
-        runtime.last_press.remove(&id);
-        runtime.picking.insert(id.clone(), false);
-        runtime.committed.insert(id.clone(), 0);
-        let gen = runtime.generation.entry(id).or_insert(0);
-        *gen += 1;
-    } else {
-        *runtime = ComposerRuntime::default();
-    }
+    reset_composer_runtime(&mut runtime, composer_id.as_deref());
     Ok(())
 }
 

@@ -8,8 +8,8 @@
     "build": "tauri build",
     "tauri": "tauri",
     "probe": "cargo run -p cyberdeck-probe --",
-    "test:js": "node test/smoke.mjs",
-    "test:rust": "cargo test -p cyberdeck-ble",
+    "test:js": "node test/smoke.mjs && node test/dispatch.mjs && node test/composer.mjs && node test/config_profile.mjs",
+    "test:rust": "cargo test -p cyberdeck-ble && cargo test -p mcc-desktop",
     "test:harness": "node test/verification/harness.mjs",
     "test": "npm run test:js && npm run test:rust && npm run test:harness"
   },
