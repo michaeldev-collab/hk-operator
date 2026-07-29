@@ -5,7 +5,7 @@
 - [x] Phase 1 harness stubs — [`docs/verification/harness.md`](./verification/harness.md)
 - [x] Phase 2 protocol / dispatch / composer regressions — `npm test` under `mcc/`
 - [x] Phase 3 sanitized threat model — [`docs/security-threat-model.md`](./security-threat-model.md)
-- [x] Phase 4 start — P3-01…P3-06 (fire token, allowlist scrub, value-bound shell, ydotool 0600, GitHub-only remotes, import path confinement)
+- [x] Phase 4 start — P3-01…P3-07 (fire token, allowlist scrub, value-bound shell, ydotool 0600, GitHub-only remotes, import path confinement, save_store allowlist gate)
 - [ ] GitHub Actions: `cargo check` / `cargo test` + firmware compile CI (Phase 5)
 - [x] Rename runtime config dir to `~/.config/hk-operator/` in MCC binary
 - [x] Git-aware profile sync UI (MCC panel)

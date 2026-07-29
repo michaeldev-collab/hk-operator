@@ -1,4 +1,4 @@
-//! Profile apply rules (P3-02) — pure store mutation helpers.
+//! Allowlist merge rules (P3-02 profile apply, P3-07 save_store) — pure helpers.
 
 use crate::dispatch::AllowedCommands;
 use std::collections::HashSet;
@@ -28,6 +28,22 @@ pub fn merge_allowlist_after_profile(
         profile_allowlist_ignored: profile_allowlist_entry_count,
         retained_allowlist: live_allowed.len(),
     }
+}
+
+/// **P3-07:** `save_store` must not expand or re-fingerprint the shell allowlist.
+///
+/// Incoming `allowed_commands` from the webview is ignored. Live entries are
+/// retained only when the action id still exists. Expansion is exclusively via
+/// `allow_command` (which fingerprints the live action value).
+pub fn retain_allowlist_for_save(
+    live_allowed: &AllowedCommands,
+    new_action_ids: &HashSet<String>,
+) -> AllowedCommands {
+    live_allowed
+        .iter()
+        .filter(|(id, _)| new_action_ids.contains(*id))
+        .map(|(id, fp)| (id.clone(), fp.clone()))
+        .collect()
 }
 
 #[cfg(test)]
@@ -66,5 +82,32 @@ mod tests {
         let stats = merge_allowlist_after_profile(&mut live, &actions, 1);
         assert!(live.is_empty());
         assert_eq!(stats.profile_allowlist_ignored, 1);
+    }
+
+    #[test]
+    fn save_store_ignores_incoming_expansion_and_fp_forge() {
+        let mut live = AllowedCommands::new();
+        live.insert("ok".into(), command_value_fingerprint("echo ok"));
+        // Action set includes a new id; retain_allowlist_for_save still must not
+        // invent an allowlist entry for it (incoming is never consulted).
+        let actions: HashSet<String> = ["ok", "evil"].iter().map(|s| (*s).into()).collect();
+        let merged = retain_allowlist_for_save(&live, &actions);
+        assert_eq!(merged.len(), 1);
+        assert_eq!(
+            merged.get("ok").map(String::as_str),
+            Some(command_value_fingerprint("echo ok").as_str())
+        );
+        assert!(!merged.contains_key("evil"));
+    }
+
+    #[test]
+    fn save_store_drops_allowlist_when_action_removed() {
+        let mut live = AllowedCommands::new();
+        live.insert("gone".into(), "dead".into());
+        live.insert("stay".into(), "alive".into());
+        let actions: HashSet<String> = ["stay"].iter().map(|s| (*s).into()).collect();
+        let merged = retain_allowlist_for_save(&live, &actions);
+        assert_eq!(merged.len(), 1);
+        assert!(merged.contains_key("stay"));
     }
 }

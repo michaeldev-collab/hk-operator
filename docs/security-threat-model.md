@@ -111,6 +111,7 @@ These are **absent** — do not document them as shipped controls:
 | `ftp:` / `javascript:` URL via Rust dispatch | **Mitigated** | `url_gate` prefix check |
 | Shell with cold (non-allowlisted) id | **Mitigated** | `command_gate` |
 | Shell after allowlist + mutated `value` | **Mitigated** | P3-03 value fingerprint gate; re-approve required |
+| Webview `save_store` expands allowlist | **Mitigated** | `retain_allowlist_for_save` ignores incoming allowlist; expand only via `allow_command` |
 | Profile / git pull pre-seeds `allowed_commands` | **Mitigated** | Apply ignores profile allowlist; retains live ∩ action ids |
 | Profile name `../` traversal | **Mitigated** | `sanitize_profile_name` |
 | Arbitrary git remote URL | **Mitigated** | `validate_git_remote_url` allows github.com HTTPS/SSH only |
@@ -129,7 +130,7 @@ These are **absent** — do not document them as shipped controls:
 | **P3-04** | Medium → **Remediated** | `ydotool_sock` + `ensure_ydotoold` | Socket mode `0600`; recreate if group/other bits set; avoid `/tmp` default | Residual: pre-existing foreign `YDOTOOL_SOCKET` still honored if already owner-only; same-user injection remains by design |
 | **P3-05** | Medium → **Remediated** | `git_sync::validate_git_remote_url` | Only `github.com` HTTPS/SSH remotes; reject http/file/other hosts | Residual: GitHub itself can still host malicious profile content after pull (P3-02 still applies) |
 | **P3-06** | Medium → **Remediated** | `profile_path` + `import_profile` | Import confined to config `profiles/` and `hk-config/profiles/`; rejects traversal / non-JSON / outside roots | Residual: hostile JSON *inside* allowed dirs still applies actions (P3-02 allowlist scrub still applies) |
-| **P3-07** | Medium | `save_store` accepts full `Store` | Webview/`save_store` can expand allowlist without `allow_command` UX | XSS / compromised webview → shell approvals |
+| **P3-07** | Medium → **Remediated** | `retain_allowlist_for_save` + `save_store` | Incoming allowlist ignored; live entries retained ∩ action ids; expand only via `allow_command` | Residual: UI state can claim approvals until reload; re-create same id+value reuses prior approval |
 | **P3-08** | Low | `PadStatus.address`; UI status; probe logs | BLE MAC displayed / printed without redaction | Shoulder-surf / log leakage of device address |
 | **P3-09** | Low | `url_gate` case-sensitive vs JS regex; MacroEvent no index bounds | Edge inconsistencies | Low direct impact |
 
@@ -142,9 +143,9 @@ These are **absent** — do not document them as shipped controls:
 
 HK Operator MCC is a **high-privilege local automation surface** by design: pad presses and the fire API can open URLs, paste text, and (after approval) run shell. Localhost binding, fire-token gate, URL/allowlist gates, and non-import of profile allowlists are real.
 
-Open residual risk centers on **P3-07+** (`save_store` allowlist expansion, MAC redaction), same-user fire-token readability, and lack of OS sandbox around `bash -lc`.
+Open residual risk centers on **P3-08+** (BLE MAC redaction, minor gate quirks), same-user fire-token readability, and lack of OS sandbox around `bash -lc`.
 
-**Next gate:** continue Phase 4 with P3-07 (`save_store` allowlist gate) or P3-08 (BLE MAC redaction), separate commits each.
+**Next gate:** continue Phase 4 with P3-08 (BLE MAC redaction) or P3-09 (URL/MacroEvent edge cases), separate commits each.
 
 ## 10. Verification of this document
 
@@ -152,7 +153,7 @@ Open residual risk centers on **P3-07+** (`save_store` allowlist expansion, MAC 
 | --- | --- |
 | Controls cited exist in tree | Verified against `main.rs`, `dispatch.rs`, `composer.rs`, `git_sync.rs`, `lib.js` |
 | Non-claims listed | Explicit §6 |
-| Remediations shipped | **P3-01 … P3-06** |
+| Remediations shipped | **P3-01 … P3-07** |
 | Firmware UUID / BLE name / flash | Untouched |
 | Runtime exploit exercise | **Not performed** |
 

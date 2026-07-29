@@ -26,7 +26,9 @@ use fire_api::{
     classify_fire_route, fire_curl_exec, fire_token_authorized, load_or_create_fire_token,
     FireRoute,
 };
-use profile_apply::{merge_allowlist_after_profile, ProfileApplyStats};
+use profile_apply::{
+    merge_allowlist_after_profile, retain_allowlist_for_save, ProfileApplyStats,
+};
 use profile_path::resolve_confined_profile_path;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -152,8 +154,11 @@ async fn get_store(state: State<'_, Arc<AppState>>) -> Result<Store, String> {
 }
 
 #[tauri::command]
-async fn save_store(state: State<'_, Arc<AppState>>, store: Store) -> Result<(), String> {
+async fn save_store(state: State<'_, Arc<AppState>>, mut store: Store) -> Result<(), String> {
     let mut g = state.store.lock().await;
+    // P3-07: never expand / re-fingerprint allowlist from the webview payload.
+    let action_ids: HashSet<String> = store.actions.iter().map(|a| a.id.clone()).collect();
+    store.allowed_commands = retain_allowlist_for_save(&g.allowed_commands, &action_ids);
     *g = store;
     g.save(&state.store_path)
 }
