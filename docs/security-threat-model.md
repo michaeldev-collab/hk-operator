@@ -73,7 +73,7 @@ Cyberpad FW ──BLE HID+GATT──► BlueZ ──► MCC (Tauri)
 | Profile / git apply **does not** install `allowedCommands` | `profile_apply::merge_allowlist_after_profile` via `apply_profile_file` |
 | URL actions require `http://` or `https://` prefix | `dispatch::url_gate` → `execute_action` `"url"` |
 | UI URL validation (case-insensitive) | `lib.js` `validateAction`; `app.js` `openUrl` |
-| Shell requires allowlisted **action id** | `dispatch::command_gate` + `Store.allowed_commands` |
+| Shell requires allowlisted **action id + value fingerprint** | `dispatch::command_gate` + `command_value_fingerprint` (P3-03) |
 | UI confirm before first allow | `app.js` `runAction` → `allow_command` |
 | Unknown action types rejected | `execute_action` → `unknown_type_err` |
 | Profile name path sanitization | `git_sync::sanitize_profile_name` (`/`, `\`, NUL → `_`) |
@@ -90,7 +90,6 @@ These are **absent** — do not document them as shipped controls:
 
 - No TLS on the fire API (plain HTTP loopback)
 - No sandbox (seccomp / Landlock / bubblewrap) for `bash -lc`
-- No content hash or re-approval when an allowlisted action’s `value` changes
 - No remote URL scheme/host allowlist for `git_sync::set_remote`
 - No signature / integrity check on profile JSON or git payloads
 - No Rust-side semantic validation of imported actions (serde shape only)
@@ -109,7 +108,7 @@ These are **absent** — do not document them as shipped controls:
 | Local process with token file / desktop Exec access | **Partial** | Same-user readable secret; not cross-UID by default |
 | `ftp:` / `javascript:` URL via Rust dispatch | **Mitigated** | `url_gate` prefix check |
 | Shell with cold (non-allowlisted) id | **Mitigated** | `command_gate` |
-| Shell after allowlist + mutated `value` | **Partial** | Gate is id-only; `bash -lc` runs current value |
+| Shell after allowlist + mutated `value` | **Mitigated** | P3-03 value fingerprint gate; re-approve required |
 | Profile / git pull pre-seeds `allowed_commands` | **Mitigated** | Apply ignores profile allowlist; retains live ∩ action ids |
 | Profile name `../` traversal | **Mitigated** | `sanitize_profile_name` |
 | Arbitrary git remote URL | **Unmitigated** | `set_remote` trim + non-empty only |
@@ -124,7 +123,7 @@ These are **absent** — do not document them as shipped controls:
 | --- | --- | --- | --- | --- |
 | **P3-01** | High → **Remediated** | `fire_api` + `spawn_localhost_fire_api` | Token required for `POST /fire/*`; GET fire rejected; health `/` open | Residual: same-user token file / `.desktop` Exec readability |
 | **P3-02** | High → **Remediated** | `profile_apply` + `apply_profile_file` | Profile/git apply ignores `allowedCommands`; keeps live allowlist ∩ action ids | Residual: operator must re-approve shell after intentional allowlist migration |
-| **P3-03** | High | `execute_action` `"command"` → `bash -lc` | No sandbox; allowlist is action-id only, not value hash | Approved id + edited value = arbitrary shell |
+| **P3-03** | High → **Remediated** | `dispatch::command_gate` + fingerprint | Allowlist stores id→value fingerprint; edited values need re-approval | Residual: still `bash -lc` without OS sandbox (intentional non-goal this pass) |
 | **P3-04** | Medium | `ensure_ydotoold` `-P 0666` | World-accessible uinput control socket | Other local users/processes can inject keystrokes |
 | **P3-05** | Medium | `git_sync::set_remote` | No scheme/host allowlist on remote URL | Operator can be pointed at attacker-controlled remote |
 | **P3-06** | Medium | `import_profile` | Arbitrary path read into live store | Confused-deputy overwrite of operator config |
@@ -141,9 +140,9 @@ These are **absent** — do not document them as shipped controls:
 
 HK Operator MCC is a **high-privilege local automation surface** by design: pad presses and the fire API can open URLs, paste text, and (after approval) run shell. Localhost binding, fire-token gate, URL/allowlist gates, and non-import of profile allowlists are real.
 
-Open residual risk centers on **P3-03+** (id-only shell approval, ydotool mode, git remote validation, etc.) and same-user readability of the fire token.
+Open residual risk centers on **P3-04+** (ydotool mode, git remote validation, etc.), same-user fire-token readability, and lack of OS sandbox around `bash -lc`.
 
-**Next gate:** continue Phase 4 with P3-03 (command value binding / sandbox) or P3-04 (ydotool socket mode), separate commits each.
+**Next gate:** continue Phase 4 with P3-04 (ydotool socket mode) or P3-05 (git remote allowlist), separate commits each.
 
 ## 10. Verification of this document
 
@@ -151,7 +150,7 @@ Open residual risk centers on **P3-03+** (id-only shell approval, ydotool mode, 
 | --- | --- |
 | Controls cited exist in tree | Verified against `main.rs`, `dispatch.rs`, `composer.rs`, `git_sync.rs`, `lib.js` |
 | Non-claims listed | Explicit §6 |
-| Remediations shipped | **P3-01, P3-02** (this Phase 4 start) |
+| Remediations shipped | **P3-01, P3-02, P3-03** |
 | Firmware UUID / BLE name / flash | Untouched |
 | Runtime exploit exercise | **Not performed** |
 

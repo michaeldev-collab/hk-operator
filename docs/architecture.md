@@ -101,8 +101,9 @@ Clipboard / keyboard / URL / process / composer adapter
 - Physical input originates on Cyberpad and crosses BLE to the host
 - MCC treats GATT events as local device input, then resolves against config
 - UI form validation covers action shape / URL schemes; **Rust profile apply is serde-only** for actions (see threat model)
-- Shell commands require an allowlisted action id (`Allow shell` / `allowed_commands`)
+- Shell commands require an allowlisted action id **and** matching value fingerprint (`Allow shell` / `allowedCommands` map)
 - Profile / git apply does **not** import `allowedCommands` — shell approvals stay machine-local
+- Editing a command’s text invalidates prior approval until re-approved
 - Localhost fire API requires `X-HK-Fire-Token` (token file under config dir); `GET /` remains a health probe
 - Private configuration should stay out of public Git; examples are sanitized
 - Full review: [`security-threat-model.md`](./security-threat-model.md)

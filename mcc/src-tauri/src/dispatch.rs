@@ -1,5 +1,7 @@
 //! Pure dispatch gates (no shell, open, or clipboard side effects).
 
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 
 /// Match host URL gate used by `execute_action` (prefix check, not regex).
@@ -15,16 +17,76 @@ pub fn url_gate(value: &str) -> Result<(), String> {
     }
 }
 
+/// Stable FNV-1a 64-bit fingerprint of a command action value (P3-03).
+/// Must stay in sync with `commandValueFingerprint` in `mcc/src/lib.js`.
+pub fn command_value_fingerprint(value: &str) -> String {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for b in value.as_bytes() {
+        hash ^= u64::from(*b);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("{hash:016x}")
+}
+
+/// Allowlist is action-id → fingerprint of the approved `value`.
+pub type AllowedCommands = HashMap<String, String>;
+
+pub fn parse_allowed_commands_json(v: &Value) -> AllowedCommands {
+    match v {
+        Value::Object(map) => map
+            .iter()
+            .filter_map(|(k, val)| val.as_str().map(|s| (k.clone(), s.to_string())))
+            .collect(),
+        // Legacy id-only arrays: drop — require re-approval under P3-03.
+        Value::Array(_) | Value::Null => AllowedCommands::new(),
+        _ => AllowedCommands::new(),
+    }
+}
+
+pub fn deserialize_allowed_commands<'de, D>(deserializer: D) -> Result<AllowedCommands, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let v = Value::deserialize(deserializer)?;
+    Ok(parse_allowed_commands_json(&v))
+}
+
+pub fn serialize_allowed_commands<S>(
+    value: &AllowedCommands,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    value.serialize(serializer)
+}
+
+/// Count portable allowlist entries for P3-02 ignore stats (array or object).
+pub fn portable_allowlist_entry_count(v: &Value) -> usize {
+    match v {
+        Value::Array(a) => a.len(),
+        Value::Object(m) => m.len(),
+        _ => 0,
+    }
+}
+
 pub fn command_gate(
-    allowed: &HashSet<String>,
+    allowed: &AllowedCommands,
     action_id: &str,
     action_name: &str,
+    action_value: &str,
 ) -> Result<(), String> {
-    if allowed.contains(action_id) {
+    let Some(approved_fp) = allowed.get(action_id) else {
+        return Err(format!(
+            "Command \"{action_name}\" not allowed yet — approve it in the UI first"
+        ));
+    };
+    let current = command_value_fingerprint(action_value);
+    if approved_fp == &current {
         Ok(())
     } else {
         Err(format!(
-            "Command \"{action_name}\" not allowed yet — approve it in the UI first"
+            "Command \"{action_name}\" value changed since approval — re-approve it in the UI"
         ))
     }
 }
@@ -69,7 +131,7 @@ mod tests {
         assert!(!url_scheme_allowed("ftp://example.com"));
         assert!(!url_scheme_allowed("example.com"));
         assert!(!url_scheme_allowed(""));
-        assert!(!url_scheme_allowed("HTTPS://example.com")); // Rust gate is case-sensitive prefix
+        assert!(!url_scheme_allowed("HTTPS://example.com"));
         assert_eq!(
             url_gate("ftp://x").unwrap_err(),
             "Blocked: not an http(s) URL"
@@ -77,12 +139,37 @@ mod tests {
     }
 
     #[test]
-    fn command_allowlist_by_action_id() {
-        let mut allowed = HashSet::new();
-        assert!(command_gate(&allowed, "a1", "Run ls").is_err());
-        allowed.insert("a1".into());
-        assert!(command_gate(&allowed, "a1", "Run ls").is_ok());
-        assert!(command_gate(&allowed, "a2", "Other").is_err());
+    fn fingerprint_stable_and_value_sensitive() {
+        let a = command_value_fingerprint("ls -la");
+        let b = command_value_fingerprint("ls -la");
+        let c = command_value_fingerprint("ls -la /tmp");
+        assert_eq!(a, b);
+        assert_ne!(a, c);
+        assert_eq!(a.len(), 16);
+        assert_eq!(command_value_fingerprint("ls"), "08ad4d07b5541ae8");
+    }
+
+    #[test]
+    fn command_allowlist_binds_value_fingerprint() {
+        let mut allowed = AllowedCommands::new();
+        let fp = command_value_fingerprint("ls");
+        assert!(command_gate(&allowed, "a1", "Run ls", "ls").is_err());
+        allowed.insert("a1".into(), fp.clone());
+        assert!(command_gate(&allowed, "a1", "Run ls", "ls").is_ok());
+        let err = command_gate(&allowed, "a1", "Run ls", "rm -rf /").unwrap_err();
+        assert!(err.contains("value changed"));
+        assert!(command_gate(&allowed, "a2", "Other", "true").is_err());
+    }
+
+    #[test]
+    fn legacy_array_allowed_commands_parse_empty() {
+        let v = serde_json::json!(["a1", "a2"]);
+        assert!(parse_allowed_commands_json(&v).is_empty());
+        let v2 = serde_json::json!({"a1": "deadbeefcafebabe"});
+        assert_eq!(
+            parse_allowed_commands_json(&v2).get("a1").map(String::as_str),
+            Some("deadbeefcafebabe")
+        );
     }
 
     #[test]

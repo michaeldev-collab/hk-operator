@@ -37,7 +37,12 @@ try {
 check("has actions array", Array.isArray(profile.actions));
 check("has padBindings object", profile.padBindings && typeof profile.padBindings === "object");
 check("has composers.ai", profile.composers && profile.composers.ai);
-check("allowedCommands is empty array", Array.isArray(profile.allowedCommands) && profile.allowedCommands.length === 0);
+check("allowedCommands is empty object or array", 
+  profile.allowedCommands &&
+  (Array.isArray(profile.allowedCommands)
+    ? profile.allowedCommands.length === 0
+    : Object.keys(profile.allowedCommands).length === 0)
+);
 
 const ids = new Set(profile.actions.map((a) => a.id));
 for (const a of profile.actions) {

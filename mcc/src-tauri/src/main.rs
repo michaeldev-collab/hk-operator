@@ -15,7 +15,11 @@ use composer::{
 use cyberdeck_ble::{
     CyberdeckPad, HotkeySlot, MacroEvent, PadSlots, PadStatus, MODE_HID, MODE_MACRO,
 };
-use dispatch::{command_gate, unknown_type_err, url_gate};
+use dispatch::{
+    command_gate, command_value_fingerprint, deserialize_allowed_commands,
+    portable_allowlist_entry_count, serialize_allowed_commands, unknown_type_err, url_gate,
+    AllowedCommands,
+};
 use fire_api::{
     classify_fire_route, fire_curl_exec, fire_token_authorized, load_or_create_fire_token,
     FireRoute,
@@ -60,8 +64,13 @@ pub struct Store {
     pub actions: Vec<Action>,
     /// Keys like "0-2" → action id
     pub pad_bindings: HashMap<String, String>,
-    /// Command action ids the user has approved to execute
-    pub allowed_commands: HashSet<String>,
+    /// Command action ids → fingerprint of the approved `value` (P3-03).
+    #[serde(
+        default,
+        deserialize_with = "deserialize_allowed_commands",
+        serialize_with = "serialize_allowed_commands"
+    )]
+    pub allowed_commands: AllowedCommands,
     /// Operator-facing names for presets 1–6 (MCC-only; pad still uses LED index).
     #[serde(default)]
     pub pad_preset_names: Vec<String>,
@@ -359,7 +368,12 @@ async fn execute_action(
             )
         }
         "command" => {
-            command_gate(&store.allowed_commands, &action.id, &action.name)?;
+            command_gate(
+                &store.allowed_commands,
+                &action.id,
+                &action.name,
+                &action.value,
+            )?;
             let status = Command::new("bash")
                 .arg("-lc")
                 .arg(&action.value)
@@ -389,7 +403,17 @@ fn shellexpand_home(path: &str) -> String {
 #[tauri::command]
 async fn allow_command(state: State<'_, Arc<AppState>>, action_id: String) -> Result<(), String> {
     let mut g = state.store.lock().await;
-    g.allowed_commands.insert(action_id);
+    let action = g
+        .actions
+        .iter()
+        .find(|a| a.id == action_id)
+        .cloned()
+        .ok_or_else(|| "action not found".to_string())?;
+    if action.type_ != "command" {
+        return Err("only command actions can be shell-allowlisted".into());
+    }
+    let fp = command_value_fingerprint(&action.value);
+    g.allowed_commands.insert(action_id, fp);
     g.save(&state.store_path)
 }
 
@@ -439,8 +463,9 @@ struct ProfileFile {
     pad_preset_names: Vec<String>,
     #[serde(default)]
     composers: HashMap<String, ComposerConfig>,
+    /// Portable allowlist (object id→fp, or legacy id array). Never applied live (P3-02).
     #[serde(default)]
-    allowed_commands: HashSet<String>,
+    allowed_commands: serde_json::Value,
 }
 
 #[tauri::command]
@@ -461,7 +486,8 @@ async fn export_profile(
         pad_bindings: store.pad_bindings.clone(),
         pad_preset_names: store.pad_preset_names.clone(),
         composers: store.composers.clone(),
-        allowed_commands: store.allowed_commands.clone(),
+        allowed_commands: serde_json::to_value(&store.allowed_commands)
+            .unwrap_or_else(|_| serde_json::json!({})),
     };
     let json = serde_json::to_string_pretty(&profile).map_err(|e| e.to_string())?;
     std::fs::write(&path, json).map_err(|e| e.to_string())?;
@@ -531,7 +557,7 @@ fn config_dir_from_store(store_path: &PathBuf) -> PathBuf {
 }
 
 fn apply_profile_file(store: &mut Store, profile: ProfileFile) -> ProfileApplyStats {
-    let profile_allowed = profile.allowed_commands;
+    let ignored = portable_allowlist_entry_count(&profile.allowed_commands);
     store.actions = profile.actions;
     store.pad_bindings = profile.pad_bindings;
     store.pad_preset_names = profile.pad_preset_names;
@@ -542,7 +568,7 @@ fn apply_profile_file(store: &mut Store, profile: ProfileFile) -> ProfileApplySt
     };
     let action_ids: HashSet<String> = store.actions.iter().map(|a| a.id.clone()).collect();
     // P3-02: never install allowlist from portable profile / git apply.
-    merge_allowlist_after_profile(&mut store.allowed_commands, &action_ids, &profile_allowed)
+    merge_allowlist_after_profile(&mut store.allowed_commands, &action_ids, ignored)
 }
 
 #[tauri::command]
@@ -594,7 +620,8 @@ async fn git_sync_push_profile(
         pad_bindings: store.pad_bindings.clone(),
         pad_preset_names: store.pad_preset_names.clone(),
         composers: store.composers.clone(),
-        allowed_commands: store.allowed_commands.clone(),
+        allowed_commands: serde_json::to_value(&store.allowed_commands)
+            .unwrap_or_else(|_| serde_json::json!({})),
     };
     drop(store);
     let json = serde_json::to_string_pretty(&profile).map_err(|e| e.to_string())?;

@@ -24,6 +24,39 @@ export function defaultComposers() {
   };
 }
 
+/**
+ * Stable FNV-1a 64-bit fingerprint of a command action value (P3-03).
+ * Must match Rust `command_value_fingerprint` in dispatch.rs.
+ */
+export function commandValueFingerprint(value) {
+  let hash = 0xcbf29ce484222325n;
+  const bytes = new TextEncoder().encode(String(value ?? ""));
+  const prime = 0x100000001b3n;
+  const mask = 0xffffffffffffffffn;
+  for (const b of bytes) {
+    hash ^= BigInt(b);
+    hash = (hash * prime) & mask;
+  }
+  return hash.toString(16).padStart(16, "0");
+}
+
+/** Normalize store allowlist: id → fingerprint object (legacy arrays dropped). */
+export function normalizeAllowedCommands(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out = {};
+  for (const [id, fp] of Object.entries(raw)) {
+    if (typeof fp === "string" && fp) out[id] = fp;
+  }
+  return out;
+}
+
+export function isCommandAllowed(action, allowedCommands = {}) {
+  if (!action || action.type !== "command") return false;
+  const fp = allowedCommands[action.id];
+  if (!fp) return false;
+  return fp === commandValueFingerprint(action.value);
+}
+
 export function normalizeComposers(raw) {
   const base = defaultComposers();
   if (!raw || typeof raw !== "object") return base;

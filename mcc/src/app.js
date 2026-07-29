@@ -8,6 +8,9 @@ import {
   uid,
   defaultComposers,
   normalizeComposers,
+  commandValueFingerprint,
+  normalizeAllowedCommands,
+  isCommandAllowed,
 } from "./lib.js";
 import { SEED_ACTIONS, SEED_PAD_BINDINGS } from "./seed.js";
 
@@ -105,7 +108,7 @@ const state = {
   padBindings: {}, // "p-a" -> actionId
   padPresetNames: defaultPresetNames(),
   composers: defaultComposers(),
-  allowedCommands: new Set(),
+  allowedCommands: {},
   query: "",
   category: "all",
   type: "all",
@@ -138,7 +141,7 @@ function browserLoad() {
           padBindings: {},
           padPresetNames: defaultPresetNames(),
           composers: defaultComposers(),
-          allowedCommands: new Set(),
+          allowedCommands: {},
         };
       }
       if (parsed && Array.isArray(parsed.actions)) {
@@ -147,7 +150,7 @@ function browserLoad() {
           padBindings: parsed.padBindings || {},
           padPresetNames: normalizePresetNames(parsed.padPresetNames),
           composers: normalizeComposers(parsed.composers),
-          allowedCommands: new Set(parsed.allowedCommands || []),
+          allowedCommands: normalizeAllowedCommands(parsed.allowedCommands),
         };
       }
     }
@@ -169,7 +172,7 @@ function browserLoad() {
     padBindings: remapped,
     padPresetNames,
     composers,
-    allowedCommands: [],
+    allowedCommands: {},
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
   return {
@@ -177,7 +180,7 @@ function browserLoad() {
     padBindings: remapped,
     padPresetNames,
     composers,
-    allowedCommands: new Set(),
+    allowedCommands: {},
   };
 }
 
@@ -189,7 +192,7 @@ function browserSave() {
       padBindings: state.padBindings,
       padPresetNames: normalizePresetNames(state.padPresetNames),
       composers: normalizeComposers(state.composers),
-      allowedCommands: [...state.allowedCommands],
+      allowedCommands: normalizeAllowedCommands(state.allowedCommands),
     })
   );
 }
@@ -200,7 +203,7 @@ async function desktopLoad() {
   let padBindings = store.padBindings || {};
   let padPresetNames = normalizePresetNames(store.padPresetNames);
   let composers = normalizeComposers(store.composers);
-  let allowedCommands = new Set(store.allowedCommands || []);
+  let allowedCommands = normalizeAllowedCommands(store.allowedCommands);
 
   if (actions.length === 0) {
     actions = SEED_ACTIONS.map((a) => normalizeAction(a));
@@ -259,7 +262,7 @@ async function desktopSave(
       padBindings,
       padPresetNames: normalizePresetNames(padPresetNames),
       composers: normalizeComposers(composers),
-      allowedCommands: [...allowed],
+      allowedCommands: normalizeAllowedCommands(allowed),
     },
   });
 }
@@ -320,16 +323,19 @@ async function runAction(action) {
     if (action.type === "url") return openUrl(action);
     return copyValue(action);
   }
-  if (action.type === "command" && !state.allowedCommands.has(action.id)) {
+  if (action.type === "command" && !isCommandAllowed(action, state.allowedCommands)) {
     if (
       !confirm(
-        `Allow shell execution for "${action.name}"?\n\n${action.value}\n\nThis is stored until you clear allow-list data.`
+        `Allow shell execution for "${action.name}"?\n\n${action.value}\n\nRe-approval is required if this command text changes.`
       )
     ) {
       toast("Command not allowed");
       return;
     }
-    state.allowedCommands.add(action.id);
+    state.allowedCommands = {
+      ...state.allowedCommands,
+      [action.id]: commandValueFingerprint(action.value),
+    };
     await tauriInvoke("allow_command", { actionId: action.id });
     await save();
   }
@@ -449,7 +455,7 @@ function renderCards() {
       foot.append(el("button", { className: "btn", textContent: "Copy", onclick: () => copyValue(a) }));
     }
     if (isTauri() && a.type === "command") {
-      const allowed = state.allowedCommands.has(a.id);
+      const allowed = isCommandAllowed(a, state.allowedCommands);
       foot.append(
         el("button", {
           className: "btn" + (allowed ? " on" : ""),
@@ -457,7 +463,10 @@ function renderCards() {
           onclick: async () => {
             if (allowed) return;
             if (!confirm(`Allow shell for "${a.name}"?\n\n${a.value}`)) return;
-            state.allowedCommands.add(a.id);
+            state.allowedCommands = {
+              ...state.allowedCommands,
+              [a.id]: commandValueFingerprint(a.value),
+            };
             await tauriInvoke("allow_command", { actionId: a.id });
             await save();
             render();
@@ -872,7 +881,7 @@ function exportJson() {
     padBindings: state.padBindings,
     padPresetNames: normalizePresetNames(state.padPresetNames),
     composers: normalizeComposers(state.composers),
-    allowedCommands: [...state.allowedCommands],
+    allowedCommands: normalizeAllowedCommands(state.allowedCommands),
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
@@ -1007,7 +1016,7 @@ function applyStoreFromRust(store) {
   state.padBindings = store.padBindings || {};
   state.padPresetNames = normalizePresetNames(store.padPresetNames);
   state.composers = normalizeComposers(store.composers);
-  state.allowedCommands = new Set(store.allowedCommands || []);
+  state.allowedCommands = normalizeAllowedCommands(store.allowedCommands);
   render();
   renderComposerPanel();
 }
@@ -1204,7 +1213,10 @@ async function init() {
       const msg = String(p.result || "");
       toast(`Macro ${presetDisplayName(p.preset ?? 0)}/${BTN_NAMES[p.action] || p.action}: ${msg}`);
       // If a command was blocked, offer Allow + retry once.
-      if (msg.includes("not allowed yet") && p.actionId) {
+      if (
+        (msg.includes("not allowed yet") || msg.includes("value changed since approval")) &&
+        p.actionId
+      ) {
         const act = state.actions.find((a) => a.id === p.actionId);
         if (
           act &&
@@ -1212,7 +1224,10 @@ async function init() {
             `Allow shell for "${act.name}" so pad macros can run it?\n\n${act.value}`
           )
         ) {
-          state.allowedCommands.add(act.id);
+          state.allowedCommands = {
+            ...state.allowedCommands,
+            [act.id]: commandValueFingerprint(act.value),
+          };
           await tauriInvoke("allow_command", { actionId: act.id });
           await save();
           try {
