@@ -4,6 +4,8 @@
 | --- | --- | --- |
 | [../../docs/portfolio-engineering-plan.md](../../docs/portfolio-engineering-plan.md) | Phased verify → review → CI → release plan | **Phases 0–5 done; Phase 6 evidence shipped** |
 | [../../docs/portfolio-evidence/](../../docs/portfolio-evidence/) | Sanitized Cyberpad→MCC stills + workflow GIF | **Phase 6** |
+| [../../docs/release-packaging.md](../../docs/release-packaging.md) | MCC `.deb`, firmware checksums, compat, rollback | **Phase 7 draft** |
+| [../../docs/COMPATIBILITY.md](../../docs/COMPATIBILITY.md) | MCC ↔ firmware support matrix | **Phase 7 draft** |
 | [../../docs/architecture.md](../../docs/architecture.md) | Platform architecture | Current |
 | [../../docs/hardware-v1.md](../../docs/hardware-v1.md) | Cyberpad V1 validation story + photos | Current |
 | [portfolio-hk-config-sync.md](./portfolio-hk-config-sync.md) | Config as data; profile import/export + git sync UI | **MVP shipped** |

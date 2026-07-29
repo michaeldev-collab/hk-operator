@@ -166,11 +166,15 @@ Sanitized screenshots/GIF/short video: Cyberpad press → MCC event → binding 
 - [x] Hygiene: no `/home/`, no Bluetooth MAC pattern, no private remotes in captions/frames
 - [ ] Optional later: live HITL camera + MCC window GIF under same redaction rules
 
-**Done (illustrative pack):** hardware stills + MCC mockup sequence + `workflow.gif`. **Next:** Phase 7 packaging when ready.
+**Done (illustrative pack):** hardware stills + MCC mockup sequence + `workflow.gif`.
 
 ### Phase 7 — Reproducible packaging and release
 
-Align versions; firmware artifact + checksums; MCC Linux package; toolchain pins; compatibility matrix; upgrade/rollback; config backup/migrate; probe-only diagnostics; release notes.
+**Drafted:** [`docs/release-packaging.md`](./release-packaging.md) + [`docs/COMPATIBILITY.md`](./COMPATIBILITY.md) + `scripts/release-checksums.sh`.
+
+Covers: version alignment (Cargo 0.1 → app 0.2 drift), `.deb` artifact, firmware source sha256, compatibility matrix, config backup/rollback, tag-triggered release CI (execute later), probe-only preflight. **No flash.**
+
+**Next (execute):** align workspace version → tag-triggered `.deb` upload → cut `v0.2.0` notes with checksums.
 
 ### Phase 8 — Future Cyberpad hardware revision
 

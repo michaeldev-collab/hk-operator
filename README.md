@@ -75,6 +75,9 @@ set a remote (or create a private repo via `gh`), then **Push current as…** /
 - [MCC](./mcc/README.md)
 - [Configuration examples](./config/examples/README.md)
 - [Portfolio engineering plan](./docs/portfolio-engineering-plan.md)
+- [Release packaging plan](./docs/release-packaging.md)
+- [Compatibility matrix](./docs/COMPATIBILITY.md)
+- [Portfolio evidence](./docs/portfolio-evidence/)
 - [V1 hardware, summarized](./docs/ESP-AND-HOT-GLUE.md)
 
 ## License

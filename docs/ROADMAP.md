@@ -8,7 +8,9 @@
 - [x] Phase 4 — P3-01…P3-09 remediated (fire token through URL/MacroEvent edge gates)
 - [x] Phase 5 — GitHub Actions CI: Rust check/test, JS tests, firmware source gate ([run](https://github.com/michaeldev-collab/hk-operator/actions/runs/30478533368) green)
 - [x] Phase 6 — Sanitized Cyberpad→MCC portfolio evidence ([`docs/portfolio-evidence/`](./portfolio-evidence/))
+- [x] Phase 7 start — Release packaging plan ([`docs/release-packaging.md`](./release-packaging.md), [`docs/COMPATIBILITY.md`](./COMPATIBILITY.md))
 - [x] Rename runtime config dir to `~/.config/hk-operator/` in MCC binary
 - [x] Git-aware profile sync UI (MCC panel)
 - [ ] Enter-key composer reset (global hotkey)
-- [ ] Phases 1–8 per portfolio engineering plan
+- [ ] Phase 7 execute — version align, tag release `.deb`, checksums on Release page
+- [ ] Phase 8 — Cyberpad hardware revision docs (preserve V1 layout)
