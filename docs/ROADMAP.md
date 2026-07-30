@@ -13,5 +13,6 @@
 - [x] Rename runtime config dir to `~/.config/hk-operator/` in MCC binary
 - [x] Git-aware profile sync UI (MCC panel)
 - [ ] Enter-key composer reset (global hotkey)
-- [ ] Phase 7 execute — cut `v0.2.0` tag to produce Release `.deb` (workflow: [`release.yml`](../.github/workflows/release.yml))
+- [x] Phase 7 execute — `v0.2.0` Release with `.deb` + checksums ([release](https://github.com/michaeldev-collab/hk-operator/releases/tag/v0.2.0))
+- [ ] Phase 7 optional — operator dry-run install / `.deb` rollback
 - [ ] Phase 8 execute — KiCad footprints/Gerbers, NeoPixel power decision, case dims lock to PCB

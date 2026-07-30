@@ -172,9 +172,9 @@ Sanitized screenshots/GIF/short video: Cyberpad press → MCC event → binding 
 
 **Drafted:** [`docs/release-packaging.md`](./release-packaging.md) + [`docs/COMPATIBILITY.md`](./COMPATIBILITY.md) + `scripts/release-checksums.sh`.
 
-**Executed (partial):** Cargo workspace aligned to `0.2.0`; tag-triggered [`.github/workflows/release.yml`](../.github/workflows/release.yml) builds/uploads MCC `.deb` (+ firmware source checksum; no flash).
+**Executed:** Cargo `0.2.0`; [`release.yml`](../.github/workflows/release.yml); tag **[v0.2.0](https://github.com/michaeldev-collab/hk-operator/releases/tag/v0.2.0)** with `hk-operator-mcc_0.2.0_amd64.deb` + sha256 + firmware source checksums (no flash).
 
-**Next:** cut `v0.2.0` (or next) tag → verify Release assets → optional operator dry-run install/rollback.
+**Next:** optional install/rollback dry-run; then Phase 8 hardware execute when NeoPixel decisions land.
 
 ### Phase 8 — Future Cyberpad hardware revision
 

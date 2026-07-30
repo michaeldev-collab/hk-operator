@@ -248,7 +248,7 @@ require a one-shot migrate note in the release.
 | 2 | Add `docs/COMPATIBILITY.md` generated/filled from §6 | **Done** |
 | 3 | Script `scripts/release-checksums.sh` for `.ino` sha256 | **Done** |
 | 4 | Tag-triggered GH Action: build + upload `.deb` | **Done** — `release.yml` |
-| 5 | Cut `v0.2.0` (or next) with notes + checksums | Public release page complete |
+| 5 | Cut `v0.2.0` (or next) with notes + checksums | **Done** — [v0.2.0](https://github.com/michaeldev-collab/hk-operator/releases/tag/v0.2.0) |
 | 6 | Operator dry-run: install → probe → rollback `.deb` | Written result in private notes |
 
 ## 11. Non-goals
