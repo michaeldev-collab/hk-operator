@@ -14,5 +14,5 @@
 - [x] Git-aware profile sync UI (MCC panel)
 - [ ] Enter-key composer reset (global hotkey)
 - [x] Phase 7 execute — `v0.2.0` Release with `.deb` + checksums ([release](https://github.com/michaeldev-collab/hk-operator/releases/tag/v0.2.0))
-- [ ] Phase 7 optional — operator dry-run install / `.deb` rollback
+- [x] Phase 7 optional — operator dry-run / probe / rollback docs ([`docs/verification/v0.2.0-deb-dry-run.md`](./verification/v0.2.0-deb-dry-run.md))
 - [ ] Phase 8 execute — KiCad footprints/Gerbers, NeoPixel power decision, case dims lock to PCB

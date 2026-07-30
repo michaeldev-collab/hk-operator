@@ -1,7 +1,7 @@
 # Phase 7 — Release packaging plan
 
-> Status: **draft** (docs only). No firmware flash. No UUID / BLE advertise-name changes.
-> Last updated: 2026-07-29 · Repo: [hk-operator](https://github.com/michaeldev-collab/hk-operator)
+> Status: **executed** for v0.2.0 (Release + optional dry-run). No firmware flash. No UUID / BLE advertise-name changes.
+> Last updated: 2026-07-30 · Repo: [hk-operator](https://github.com/michaeldev-collab/hk-operator)
 
 This plan turns “it builds on my machine” into a **reproducible public release** for
 HK Operator MCC + Cyberpad hybrid firmware, without claiming CI flash or HITL
@@ -78,13 +78,19 @@ Release workflow renames to:
 hk-operator-mcc_X.Y.Z_amd64.deb
 ```
 
-Install / uninstall (operator machine):
+Install / uninstall (operator machine — Debian/Ubuntu):
 
 ```bash
 sudo dpkg -i hk-operator-mcc_X.Y.Z_amd64.deb
 # rollback previous:
 sudo dpkg -i hk-operator-mcc_PREV_amd64.deb
+# or remove package (config under ~/.config/hk-operator survives):
+sudo dpkg -r hk-operator
 ```
+
+On Arch / non-dpkg hosts, extract with `ar`/`tar` for smoke only — see
+[`verification/v0.2.0-deb-dry-run.md`](./verification/v0.2.0-deb-dry-run.md).
+Do not treat extract-to-`/tmp` as a supported install.
 
 ### 4.2 Secondary (optional later): AppImage
 
@@ -249,7 +255,7 @@ require a one-shot migrate note in the release.
 | 3 | Script `scripts/release-checksums.sh` for `.ino` sha256 | **Done** |
 | 4 | Tag-triggered GH Action: build + upload `.deb` | **Done** — `release.yml` |
 | 5 | Cut `v0.2.0` (or next) with notes + checksums | **Done** — [v0.2.0](https://github.com/michaeldev-collab/hk-operator/releases/tag/v0.2.0) |
-| 6 | Operator dry-run: install → probe → rollback `.deb` | Written result in private notes |
+| 6 | Operator dry-run: install → probe → rollback `.deb` | **Done** — [`verification/v0.2.0-deb-dry-run.md`](./verification/v0.2.0-deb-dry-run.md) (Arch extract smoke; `dpkg -i` N/A on host) |
 
 ## 11. Non-goals
 

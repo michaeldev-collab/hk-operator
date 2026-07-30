@@ -73,7 +73,9 @@ jobs:
           fi
           out="dist/hk-operator-mcc_${ver}_amd64.deb"
           cp -v "${deb}" "${out}"
-          sha256sum "${out}" | tee "dist/hk-operator-mcc_${ver}_amd64.deb.sha256"
+          # Basename-only path so `sha256sum -c` works after download next to the .deb
+          (cd dist && sha256sum "hk-operator-mcc_${ver}_amd64.deb" \
+            | tee "hk-operator-mcc_${ver}_amd64.deb.sha256")
           ./scripts/release-checksums.sh | tee dist/firmware-checksums.md
           echo "Staged:"
           ls -la dist/
