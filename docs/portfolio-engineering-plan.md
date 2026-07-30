@@ -180,9 +180,9 @@ Sanitized screenshots/GIF/short video: Cyberpad press → MCC event → binding 
 
 **Drafted:** [`hardware/cyberpad-v2/`](../hardware/cyberpad-v2/) — PCB concept SVG, OpenSCAD case + STL, total-hardware README; PCB plan in [`docs/hardware-v2-pcb.md`](./hardware-v2-pcb.md).
 
-Socketed ESP32-C6 DevKit, MX hotswap switches, GND pour, NeoPixel zone TBD, muscle-memory layout. **Undecided until PCB fab + dry-fit.** V1 remains the validated chapter.
+Socketed ESP32-C6 DevKit, MX hotswap switches, GND pour, **3× SK6812MINI-E @ 3V3 / DIN GPIO7**, muscle-memory layout. Outline still draft until KiCad + dry-fit. V1 remains the validated chapter.
 
-**Next:** NeoPixel power/count decision → KiCad real footprints → lock SCAD to final outline.
+**Next:** KiCad real footprints → lock SCAD to final outline → fab / probe (no CI flash).
 
 ## E. Proposed commit roadmap
 

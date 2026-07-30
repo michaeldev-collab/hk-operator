@@ -15,4 +15,5 @@
 - [ ] Enter-key composer reset (global hotkey)
 - [x] Phase 7 execute — `v0.2.0` Release with `.deb` + checksums ([release](https://github.com/michaeldev-collab/hk-operator/releases/tag/v0.2.0))
 - [x] Phase 7 optional — operator dry-run / probe / rollback docs ([`docs/verification/v0.2.0-deb-dry-run.md`](./verification/v0.2.0-deb-dry-run.md))
-- [ ] Phase 8 execute — KiCad footprints/Gerbers, NeoPixel power decision, case dims lock to PCB
+- [x] Phase 8 NeoPixel lock — 3× SK6812MINI-E @ 3V3, DIN GPIO7 ([`hardware-v2-pcb.md`](./hardware-v2-pcb.md))
+- [ ] Phase 8 execute — KiCad footprints/Gerbers, case dims lock to PCB

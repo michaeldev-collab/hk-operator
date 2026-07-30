@@ -12,8 +12,8 @@ NVS slots are a cache for offline HID — same hybrid model as V1.
 | Piece | Path | Role |
 | --- | --- | --- |
 | Total hardware plan | this README | Stack: PCB + case + BOM + validation order |
-| PCB plan | [`../../docs/hardware-v2-pcb.md`](../../docs/hardware-v2-pcb.md) | Headers, hotswap, GND pour, NeoPixels TBD |
-| Board concept (top) | [`pcb/board-concept.svg`](./pcb/board-concept.svg) | Floorplan / silk intent |
+| PCB plan | [`../../docs/hardware-v2-pcb.md`](../../docs/hardware-v2-pcb.md) | Headers, hotswap, GND pour, NeoPixels locked |
+| Board concept (top) | [`pcb/board-concept.svg`](./pcb/board-concept.svg) | Floorplan / silk intent (3× NP @ 3V3, DIN GPIO7) |
 | Case (OpenSCAD) | [`case/cyberpad-v2-case.scad`](./case/cyberpad-v2-case.scad) | Parametric shell + plate |
 | Case STL (assembly preview) | [`case/cyberpad-v2-case.stl`](./case/cyberpad-v2-case.stl) | Bottom + plate stacked |
 | Case STL (bottom only) | [`case/cyberpad-v2-bottom.stl`](./case/cyberpad-v2-bottom.stl) | Printable bottom shell |
@@ -28,7 +28,7 @@ hot glue ([photos](../../media/hardware/cyberpad-v1/)). V2 keeps **muscle memory
 - ESP32-C6 DevKit on **female 2.54 mm headers** (board is a socket, not a soldered MCU)
 - Switches in **MX hotswap sockets** (not DuPont headers — those are wrong for MX)
 - **GND copper pour** tying switch commons + all DevKit GND pins (better V1 ground-bus)
-- Path to **onboard NeoPixels + SMD resistors** (power/count TBD next)
+- **3× SK6812MINI-E** on DevKit **3V3**, DIN **GPIO7** (series 330 Ω + per-LED 100 nF)
 
 ## Nominal dimensions (draft — will move)
 
@@ -51,10 +51,19 @@ Edit numbers in the SCAD `/* params */` block and re-export STL when PCB dims lo
 | B3 | 4 |
 | B4 | 6 |
 | B5 | 5 |
-| LED_R / G / B (legacy discrete) | 21 / 12 / 15 |
+| LED_R / G / B (legacy discrete, DNP) | 21 / 12 / 15 |
+| NeoPixel DIN (V2 PCB) | **7** |
 
-First PCB spin should boot **existing** `Cyberdeck Pad Hybrid v0.2.0` firmware before
-any NeoPixel GPIO reassignment.
+First PCB spin boots **existing** `Cyberdeck Pad Hybrid v0.2.0` (pixels dark — GPIO7
+idle). NeoPixel FW is a later bump; no UUID / BLE-name / `FW_INFO` change here.
+
+### NeoPixel lock (V2.0 fab)
+
+| Item | Choice |
+| --- | --- |
+| Count / part | 3× SK6812MINI-E |
+| Power | 3V3 (not 5V) |
+| DIN | GPIO7 → 330–470 Ω → NP1 → NP2 → NP3 |
 
 ## Grounding (short answer)
 
@@ -67,7 +76,7 @@ same plane (the DevKit already bonds them on-module).
 ## Validation order (undecided → locked)
 
 1. Confirm DevKit SKU + measure header span / USB overhang  
-2. Finalize NeoPixel count + 3V3 vs 5V  
+2. ~~Finalize NeoPixel count + 3V3 vs 5V~~ **Done** — see PCB plan  
 3. KiCad footprints + DRC (concept SVG is not Gerbers)  
 4. Adjust SCAD to match final PCB outline  
 5. Print case draft · dry-fit DevKit + switches  

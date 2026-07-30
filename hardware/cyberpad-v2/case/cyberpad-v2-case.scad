@@ -34,7 +34,7 @@ usb_w = 12;
 usb_h = 7;
 usb_z_off = floor_z + 4;
 
-// NeoPixel window (top plate) — optional view slot
+// NeoPixel window (top plate) — view slot for 3× SK6812MINI-E cluster
 np_w = 28;
 np_h = 8;
 
