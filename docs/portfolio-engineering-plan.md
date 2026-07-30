@@ -172,9 +172,9 @@ Sanitized screenshots/GIF/short video: Cyberpad press → MCC event → binding 
 
 **Drafted:** [`docs/release-packaging.md`](./release-packaging.md) + [`docs/COMPATIBILITY.md`](./COMPATIBILITY.md) + `scripts/release-checksums.sh`.
 
-Covers: version alignment (Cargo 0.1 → app 0.2 drift), `.deb` artifact, firmware source sha256, compatibility matrix, config backup/rollback, tag-triggered release CI (execute later), probe-only preflight. **No flash.**
+**Executed (partial):** Cargo workspace aligned to `0.2.0`; tag-triggered [`.github/workflows/release.yml`](../.github/workflows/release.yml) builds/uploads MCC `.deb` (+ firmware source checksum; no flash).
 
-**Next (execute):** align workspace version → tag-triggered `.deb` upload → cut `v0.2.0` notes with checksums.
+**Next:** cut `v0.2.0` (or next) tag → verify Release assets → optional operator dry-run install/rollback.
 
 ### Phase 8 — Future Cyberpad hardware revision
 

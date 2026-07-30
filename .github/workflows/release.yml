@@ -1,0 +1,108 @@
+# Build MCC .deb and attach to GitHub Release on version tags.
+# Never flashes firmware.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  deb:
+    name: Build + upload .deb
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: mcc
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system deps (Tauri Linux + BlueZ)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential curl wget file \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev libdbus-1-dev patchelf pkg-config \
+            libssl-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: mcc
+          key: release-deb
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mcc/package-lock.json
+
+      - name: npm ci
+        run: npm ci || npm install
+
+      - name: Tauri build (.deb only)
+        run: npx tauri build --bundles deb
+
+      - name: Stage release assets
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          deb="$(find mcc/src-tauri/target/release/bundle/deb -name '*.deb' -type f | head -n 1)"
+          if [[ -z "${deb}" ]]; then
+            echo "No .deb found under mcc/src-tauri/target/release/bundle/deb" >&2
+            find mcc/src-tauri/target/release/bundle -type f 2>/dev/null || true
+            exit 1
+          fi
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            ver="${GITHUB_REF_NAME#v}"
+          else
+            ver="$(node -p "require('./mcc/package.json').version")-ci.${GITHUB_RUN_NUMBER}"
+          fi
+          out="dist/hk-operator-mcc_${ver}_amd64.deb"
+          cp -v "${deb}" "${out}"
+          sha256sum "${out}" | tee "dist/hk-operator-mcc_${ver}_amd64.deb.sha256"
+          ./scripts/release-checksums.sh | tee dist/firmware-checksums.md
+          echo "Staged:"
+          ls -la dist/
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hk-operator-mcc-deb
+          path: dist/
+          if-no-files-found: error
+
+      - name: Publish GitHub Release assets
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          body: |
+            ## HK Operator MCC
+
+            Linux `.deb` for amd64. See [release packaging](./docs/release-packaging.md).
+
+            ### Install
+            ```bash
+            sudo dpkg -i hk-operator-mcc_*_amd64.deb
+            ```
+
+            ### Firmware
+            CI does **not** flash. Firmware source checksum is attached (`firmware-checksums.md`).
+            Operator-local probe/flash only.
+
+            ### Compatibility
+            See [COMPATIBILITY.md](./docs/COMPATIBILITY.md).
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

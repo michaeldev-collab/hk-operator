@@ -94,14 +94,15 @@ Keep as follow-on; do not block first release.
 
 ### 4.3 CI release job (Phase 7 execute)
 
-Add a **manual or tag-triggered** workflow job:
+**Done:** [`.github/workflows/release.yml`](../.github/workflows/release.yml)
 
-- Trigger: `push: tags: ['v*']` or `workflow_dispatch`
-- Build `.deb` on `ubuntu-latest` with same system deps as CI Rust job
-- Upload artifact to GitHub Release
-- Never flash firmware
+- Trigger: `push` tags `v*` (also `workflow_dispatch` → artifact only, no Release)
+- Builds `.deb` on `ubuntu-22.04` with Tauri Linux deps
+- Renames to `hk-operator-mcc_<ver>_amd64.deb` + sha256
+- Attaches `firmware-checksums.md` (source sha256; **no flash**)
+- Uploads to the GitHub Release for the tag
 
-Acceptance for execute pass: one successful tag build producing a downloadable `.deb`.
+Acceptance: push `vX.Y.Z` → Release page has downloadable `.deb`.
 
 ## 5. Firmware artifact + checksum
 
@@ -245,9 +246,9 @@ require a one-shot migrate note in the release.
 | Order | Task | Acceptance |
 | --- | --- | --- |
 | 1 | Align Cargo workspace version to `0.2.0` | **Done** — workspace `0.2.0` |
-| 2 | Add `docs/COMPATIBILITY.md` generated/filled from §6 | Linked from README |
-| 3 | Script `scripts/release-checksums.sh` for `.ino` sha256 | Prints table for notes |
-| 4 | Tag-triggered GH Action: build + upload `.deb` | Release asset present |
+| 2 | Add `docs/COMPATIBILITY.md` generated/filled from §6 | **Done** |
+| 3 | Script `scripts/release-checksums.sh` for `.ino` sha256 | **Done** |
+| 4 | Tag-triggered GH Action: build + upload `.deb` | **Done** — `release.yml` |
 | 5 | Cut `v0.2.0` (or next) with notes + checksums | Public release page complete |
 | 6 | Operator dry-run: install → probe → rollback `.deb` | Written result in private notes |
 
