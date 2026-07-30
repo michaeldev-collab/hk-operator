@@ -57,10 +57,13 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          deb="$(find mcc/src-tauri/target/release/bundle/deb -name '*.deb' -type f | head -n 1)"
+          # Workspace builds land under mcc/target (not mcc/src-tauri/target).
+          deb="$(find mcc/target/release/bundle/deb mcc/src-tauri/target/release/bundle/deb \
+            -name '*.deb' -type f 2>/dev/null | head -n 1 || true)"
           if [[ -z "${deb}" ]]; then
-            echo "No .deb found under mcc/src-tauri/target/release/bundle/deb" >&2
-            find mcc/src-tauri/target/release/bundle -type f 2>/dev/null || true
+            echo "No .deb found under mcc/**/target/release/bundle/deb" >&2
+            find mcc -path '*/bundle/deb/*' -type f 2>/dev/null || true
+            find mcc -name '*.deb' -type f 2>/dev/null || true
             exit 1
           fi
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then

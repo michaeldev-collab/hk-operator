@@ -66,14 +66,13 @@ npm ci
 npm run build   # tauri build → .deb
 ```
 
-Expected output (path may vary by Tauri 2):
+Expected output (Tauri 2 workspace):
 
 ```
-mcc/src-tauri/target/release/bundle/deb/hk-operator_*.deb
-# or productName-derived: HK Operator_*.deb
+mcc/target/release/bundle/deb/HK Operator_X.Y.Z_amd64.deb
 ```
 
-Release asset naming:
+Release workflow renames to:
 
 ```
 hk-operator-mcc_X.Y.Z_amd64.deb
