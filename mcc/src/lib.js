@@ -6,7 +6,7 @@ export const CATEGORIES = [
   "Terminal Commands",
   "Project Paths",
   "Cursor Prompts",
-  "Prompts",
+  "3DL Prompts",
   "Client/Admin Tools",
 ];
 
@@ -15,63 +15,12 @@ export const ACTION_TYPES = ["url", "command", "prompt", "path", "note", "compos
 export function defaultComposers() {
   return {
     ai: {
-      // Public portfolio defaults — no private board slash names.
       commands: ["/help", "/review", "/plan"],
       separator: " ",
       timeoutMs: 4000,
       resetOn: ["timeout", "explicitClear"],
     },
   };
-}
-
-/**
- * Stable FNV-1a 64-bit fingerprint of a command action value (P3-03).
- * Must match Rust `command_value_fingerprint` in dispatch.rs.
- */
-export function commandValueFingerprint(value) {
-  let hash = 0xcbf29ce484222325n;
-  const bytes = new TextEncoder().encode(String(value ?? ""));
-  const prime = 0x100000001b3n;
-  const mask = 0xffffffffffffffffn;
-  for (const b of bytes) {
-    hash ^= BigInt(b);
-    hash = (hash * prime) & mask;
-  }
-  return hash.toString(16).padStart(16, "0");
-}
-
-/** Normalize store allowlist: id → fingerprint object (legacy arrays dropped). */
-export function normalizeAllowedCommands(raw) {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-  const out = {};
-  for (const [id, fp] of Object.entries(raw)) {
-    if (typeof fp === "string" && fp) out[id] = fp;
-  }
-  return out;
-}
-
-export function isCommandAllowed(action, allowedCommands = {}) {
-  if (!action || action.type !== "command") return false;
-  const fp = allowedCommands[action.id];
-  if (!fp) return false;
-  return fp === commandValueFingerprint(action.value);
-}
-
-/**
- * Redact a Bluetooth MAC for UI display (P3-08).
- * Must match Rust `redact_ble_address` in cyberdeck-ble (last octet kept).
- */
-export function redactBleAddress(addr) {
-  const trimmed = String(addr ?? "").trim();
-  if (!trimmed) return "(no address)";
-  const parts = trimmed.split(/[:\-]/).filter(Boolean);
-  if (
-    parts.length === 6 &&
-    parts.every((p) => /^[0-9A-Fa-f]{2}$/.test(p))
-  ) {
-    return `**:**:**:**:**:${parts[5].toUpperCase()}`;
-  }
-  return "**:**:**:**:**:**";
 }
 
 export function normalizeComposers(raw) {

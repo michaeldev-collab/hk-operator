@@ -1,13 +1,20 @@
+/* 3DL palette: near-black chassis, #2b2f35 bezel and lime accent, sampled
+   from the 3D Design Labs brand mark. */
 :root {
-  --bg: #0d1117;
-  --panel: #161b22;
-  --panel-2: #1c2330;
-  --line: #2a3140;
-  --text: #e6edf3;
-  --muted: #8b949e;
-  --accent: #4493f8;
-  --accent-2: #2ea043;
-  --danger: #f85149;
+  --bg: #08090a;
+  --panel: #101215;
+  --panel-2: #171a1e;
+  --line: #2b2f35;
+  --text: #e8ebee;
+  --muted: #868d96;
+  --accent: #8dfb05;
+  --accent-2: #8dfb05;
+  /* Softer greens keep headings and eyebrows in the brand family without
+     competing with the accent reserved for interactive elements. */
+  --accent-soft: #a8e85c;
+  --accent-dim: #7fa93c;
+  --on-accent: #0a1300;
+  --danger: #ff5c4d;
   --radius: 10px;
 }
 
@@ -30,8 +37,13 @@ body {
   flex-wrap: wrap;
 }
 .brand { display: flex; align-items: center; gap: 12px; }
-.logo { font-size: 28px; color: var(--accent); }
-.topbar h1 { font-size: 18px; margin: 0; }
+.logo {
+  width: 30px;
+  height: 30px;
+  display: block;
+  border-radius: 7px;
+}
+.topbar h1 { font-size: 18px; margin: 0; letter-spacing: 0.01em; }
 .sub { margin: 0; color: var(--muted); font-size: 12px; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
@@ -97,7 +109,7 @@ body {
   border: 1px solid var(--line);
   color: var(--muted);
 }
-.badge.cat { background: #1f2a3a; color: #9cc4ff; border-color: #294060; }
+.badge.cat { background: #1a2010; color: #b6e86a; border-color: #38431f; }
 .badge.type { text-transform: uppercase; letter-spacing: .03em; }
 .type-url { color: #9cc4ff; }
 .type-command { color: #f0b072; }
@@ -134,10 +146,11 @@ body {
   font-size: 13px;
 }
 .btn:hover { border-color: var(--accent); }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: #07101f; font-weight: 600; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
 .btn.primary:hover { filter: brightness(1.08); }
 .btn.danger:hover { border-color: var(--danger); color: var(--danger); }
 .btn.on { border-color: #e3b341; color: #e3b341; }
+.btn.held { border-color: #4a5058; color: #98a0aa; }
 
 .dialog {
   border: 1px solid var(--line);
@@ -172,7 +185,7 @@ body {
   left: 50%;
   transform: translateX(-50%) translateY(20px);
   background: var(--accent-2);
-  color: #04130a;
+  color: var(--on-accent);
   padding: 10px 16px;
   border-radius: 999px;
   font-weight: 600;
@@ -206,7 +219,7 @@ body {
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #7fd4c2;
+  color: var(--accent-dim);
 }
 .pad-grid {
   display: grid;
@@ -220,7 +233,7 @@ body {
 }
 .pad-preset-count {
   margin: 4px 0 0;
-  color: #7fd4c2 !important;
+  color: var(--accent-dim) !important;
 }
 .preset-led {
   margin: 0 0 8px;
@@ -236,7 +249,7 @@ body {
 .pad-preset h3 {
   margin: 0 0 8px;
   font-size: 13px;
-  color: #9cc4ff;
+  color: var(--accent-soft);
 }
 .preset-name {
   display: block;
@@ -247,7 +260,7 @@ body {
   font: inherit;
   font-size: 13px;
   font-weight: 600;
-  color: #9cc4ff;
+  color: var(--accent-soft);
   background: transparent;
   border: 1px solid transparent;
   border-radius: 6px;
@@ -282,7 +295,7 @@ body {
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--accent);
+  color: var(--accent-dim);
 }
 .pad-slot.mode-macro .slot-mode { color: #c9a2ff; }
 .pad-slot.mode-bridge .slot-mode { color: #7fd4c2; }
@@ -354,11 +367,6 @@ body {
   min-width: 160px;
   padding: 6px 8px;
   font: inherit;
-  color: var(--text);
-  background: var(--bg);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-}
   color: var(--text);
   background: var(--bg);
   border: 1px solid var(--line);

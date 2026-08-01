@@ -142,21 +142,14 @@ pub struct MacroEvent {
 }
 
 impl MacroEvent {
-    /// Parse a MacroEvent notify payload.
-    ///
-    /// Requires ≥2 bytes and in-range indices (`preset < PRESET_COUNT`,
-    /// `action < ACTION_COUNT`) so hostile/corrupt notifies cannot invent
-    /// out-of-grid binding keys (P3-09).
     pub fn from_bytes(buf: &[u8]) -> Option<Self> {
         if buf.len() < 2 {
             return None;
         }
-        let preset = buf[0];
-        let action = buf[1];
-        if (preset as usize) >= PRESET_COUNT || (action as usize) >= ACTION_COUNT {
-            return None;
-        }
-        Some(Self { preset, action })
+        Some(Self {
+            preset: buf[0],
+            action: buf[1],
+        })
     }
 }
 
@@ -167,41 +160,13 @@ pub struct PadStatus {
     pub connected: bool,
     pub paired: bool,
     pub info: Option<String>,
-}
-
-/// Redact a Bluetooth device address for UI/logs (P3-08).
-///
-/// Keeps the last octet so multiple pads remain distinguishable without
-/// exposing the full MAC. Non-MAC-shaped strings become fully masked.
-pub fn redact_ble_address(addr: &str) -> String {
-    let trimmed = addr.trim();
-    if trimmed.is_empty() {
-        return "(no address)".into();
-    }
-    let parts: Vec<&str> = trimmed
-        .split(|c| c == ':' || c == '-')
-        .filter(|p| !p.is_empty())
-        .collect();
-    if parts.len() == 6
-        && parts
-            .iter()
-            .all(|p| p.len() == 2 && p.chars().all(|c| c.is_ascii_hexdigit()))
-    {
-        format!("**:**:**:**:**:{}", parts[5].to_ascii_uppercase())
-    } else {
-        "**:**:**:**:**:**".into()
-    }
-}
-
-/// Clone status with a redacted address for probe/log output.
-pub fn pad_status_for_log(st: &PadStatus) -> PadStatus {
-    PadStatus {
-        address: redact_ble_address(&st.address),
-        name: st.name.clone(),
-        connected: st.connected,
-        paired: st.paired,
-        info: st.info.clone(),
-    }
+    /// `"dongle"` when MCC talks through the S3 CDC proxy; `"bluez"` otherwise.
+    #[serde(default)]
+    pub transport: Option<String>,
+    /// BlueZ `Blocked` property. When true, BlueZ will not auto-connect and
+    /// will not fight the S3 dongle for the pad's single BLE link.
+    #[serde(default)]
+    pub bluez_blocked: Option<bool>,
 }
 
 pub struct CyberdeckPad {
@@ -229,8 +194,10 @@ impl CyberdeckPad {
                     device,
                 });
             }
-            // Alias / stale name still usable if address known later
-            if name.to_lowercase().contains("cyberdeck") {
+            // Alias / stale name still usable if address known later.
+            // "cyberpad" covers the validation firmware ("Cyberpad Val C6").
+            let lower = name.to_lowercase();
+            if lower.contains("cyberdeck") || lower.contains("cyberpad") {
                 fallback = Some((addr, device));
             }
         }
@@ -266,6 +233,7 @@ impl CyberdeckPad {
         let connected = self.device.is_connected().await?;
         let paired = self.device.is_paired().await?;
         let name = self.device.name().await?;
+        let bluez_blocked = self.device.is_blocked().await.ok();
         let info = if connected {
             self.read_info().await.ok()
         } else {
@@ -277,7 +245,26 @@ impl CyberdeckPad {
             connected,
             paired,
             info,
+            transport: Some("bluez".into()),
+            bluez_blocked,
         })
+    }
+
+    /// Park or release BlueZ for this pad.
+    /// `enabled=false` → disconnect + block (dongle-friendly).
+    /// `enabled=true` → unblock and attempt connect.
+    pub async fn set_bluez_enabled(&self, enabled: bool) -> Result<PadStatus, BleError> {
+        if enabled {
+            self.device.set_blocked(false).await?;
+            // Best-effort connect; blocked=false alone stops fighting the dongle.
+            let _ = self.device.connect().await;
+        } else {
+            if self.device.is_connected().await.unwrap_or(false) {
+                let _ = self.device.disconnect().await;
+            }
+            self.device.set_blocked(true).await?;
+        }
+        self.status().await
     }
 
     async fn find_char(
@@ -335,13 +322,10 @@ impl CyberdeckPad {
         use futures_util::StreamExt;
 
         self.ensure_connected().await?;
-        println!(
-            "device {} connected={}",
-            redact_ble_address(&self.address.to_string()),
-            self.device.is_connected().await?
-        );
+        println!("device {} connected={}", self.address, self.device.is_connected().await?);
         let svc = Uuid::parse_str(SERVICE_UUID).unwrap();
         let evt = Uuid::parse_str(MACRO_EVENT_UUID).unwrap();
+        let mut found = false;
         for service in self.device.services().await? {
             let su = service.uuid().await?;
             println!("service {su}");
@@ -355,6 +339,7 @@ impl CyberdeckPad {
                 if cu != evt {
                     continue;
                 }
+                found = true;
                 println!(
                     "subscribing to MacroEvent — press a MACRO-mode button within {wait_secs}s…"
                 );
@@ -381,7 +366,10 @@ impl CyberdeckPad {
                 }
             }
         }
-        Err(BleError::CharMissing(MACRO_EVENT_UUID.into()))
+        if !found {
+            return Err(BleError::CharMissing(MACRO_EVENT_UUID.into()));
+        }
+        Ok(None)
     }
 
     /// Subscribe to MacroEvent notifications. Returns a stream of events.
@@ -433,29 +421,6 @@ mod tests {
         assert_eq!(back.r#mod, 0x01);
         assert_eq!(back.key, 0x28);
         assert_eq!(back.label, "Enter");
-    }
-
-    #[test]
-    fn redact_ble_address_keeps_last_octet() {
-        assert_eq!(
-            redact_ble_address("aa:bb:cc:dd:ee:ff"),
-            "**:**:**:**:**:FF"
-        );
-        assert_eq!(
-            redact_ble_address("AA-BB-CC-DD-EE-12"),
-            "**:**:**:**:**:12"
-        );
-        assert_eq!(redact_ble_address(""), "(no address)");
-        assert_eq!(redact_ble_address("not-a-mac"), "**:**:**:**:**:**");
-        let logged = pad_status_for_log(&PadStatus {
-            address: "11:22:33:44:55:66".into(),
-            name: Some("Cyberdeck Pad".into()),
-            connected: true,
-            paired: true,
-            info: None,
-        });
-        assert_eq!(logged.address, "**:**:**:**:**:66");
-        assert!(!logged.address.contains("11:22"));
     }
 
     #[test]

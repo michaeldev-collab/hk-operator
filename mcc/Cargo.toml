@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
   "crates/cyberdeck-ble",
+  "crates/cyberdeck-dongle",
   "probe",
   "src-tauri",
 ]
