@@ -17,6 +17,7 @@ use composer::{
 use cyberdeck_ble::{
     CyberdeckPad, HotkeySlot, MacroEvent, PadSlots, PadStatus, MODE_HID, MODE_MACRO,
 };
+use cyberdeck_dongle::DonglePad;
 use dispatch::{
     command_gate, command_value_fingerprint, deserialize_allowed_commands,
     portable_allowlist_entry_count, serialize_allowed_commands, unknown_type_err, url_gate,
@@ -41,6 +42,7 @@ use ydotool_sock::{prepare_ydotool_socket, resolve_ydotool_socket_path, ydotoold
 
 const APP_DIR: &str = "hk-operator";
 const STORE_FILE: &str = "store.json";
+const SLOT_COUNT: usize = 18;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -83,6 +85,9 @@ pub struct Store {
     /// Slash-command composers keyed by id (action type `composer` value = id).
     #[serde(default = "default_composers")]
     pub composers: HashMap<String, ComposerConfig>,
+    /// Pad HID/macro slot table (18 entries). Synced via git profiles + Sync to pad.
+    #[serde(default)]
+    pub pad_slots: Option<Vec<HotkeySlot>>,
 }
 
 impl Store {
@@ -135,7 +140,9 @@ where
     let (_session, adapter) = CyberdeckPad::session_adapter()
         .await
         .map_err(|e| e.to_string())?;
-    let pad = if let Some(addr) = address {
+    // "via-s3-dongle" is a sentinel, not a BLE address; looking it up over BlueZ
+    // fails and takes the macro listener down with it after a dongle session.
+    let pad = if let Some(addr) = address.filter(|a| !a.is_empty() && a != "via-s3-dongle") {
         CyberdeckPad::find_by_address(&adapter, &addr)
             .await
             .map_err(|e| e.to_string())?
@@ -165,10 +172,33 @@ async fn save_store(state: State<'_, Arc<AppState>>, mut store: Store) -> Result
 
 #[tauri::command]
 async fn pad_status(address: Option<String>) -> Result<PadStatus, String> {
+    // Prefer S3 dongle CDC proxy when the BLE bridge is up, but still report
+    // BlueZ Blocked so the UI toggle stays accurate while the dongle owns the link.
+    let bluez = bluez_pad_snapshot(address.clone()).await.ok();
+
+    if let Ok(mut dongle) = DonglePad::open() {
+        if let Ok(mut st) = dongle.status() {
+            if st.connected {
+                if let Some(bz) = bluez {
+                    st.address = bz.address;
+                    st.bluez_blocked = bz.bluez_blocked;
+                    if st.name.is_none() {
+                        st.name = bz.name;
+                    }
+                }
+                return Ok(st);
+            }
+        }
+    }
+
+    if let Some(st) = bluez {
+        return Ok(st);
+    }
+
     let (_session, adapter) = CyberdeckPad::session_adapter()
         .await
         .map_err(|e| e.to_string())?;
-    let pad = if let Some(addr) = address {
+    let pad = if let Some(addr) = address.filter(|a| !a.is_empty() && a != "via-s3-dongle") {
         CyberdeckPad::find_by_address(&adapter, &addr)
             .await
             .map_err(|e| e.to_string())?
@@ -180,8 +210,54 @@ async fn pad_status(address: Option<String>) -> Result<PadStatus, String> {
     pad.status().await.map_err(|e| e.to_string())
 }
 
+async fn bluez_pad_snapshot(address: Option<String>) -> Result<PadStatus, String> {
+    let (_session, adapter) = CyberdeckPad::session_adapter()
+        .await
+        .map_err(|e| e.to_string())?;
+    let pad = if let Some(addr) = address.filter(|a| !a.is_empty() && a != "via-s3-dongle") {
+        CyberdeckPad::find_by_address(&adapter, &addr)
+            .await
+            .map_err(|e| e.to_string())?
+    } else {
+        CyberdeckPad::find(&adapter)
+            .await
+            .map_err(|e| e.to_string())?
+    };
+    pad.status().await.map_err(|e| e.to_string())
+}
+
+/// Enable/disable BlueZ for the pad. Off = disconnect + block (dongle-friendly).
+#[tauri::command]
+async fn pad_set_bluez_enabled(enabled: bool, address: Option<String>) -> Result<PadStatus, String> {
+    let (_session, adapter) = CyberdeckPad::session_adapter()
+        .await
+        .map_err(|e| e.to_string())?;
+    let pad = if let Some(addr) = address.filter(|a| !a.is_empty() && a != "via-s3-dongle") {
+        CyberdeckPad::find_by_address(&adapter, &addr)
+            .await
+            .map_err(|e| e.to_string())?
+    } else {
+        CyberdeckPad::find(&adapter)
+            .await
+            .map_err(|e| e.to_string())?
+    };
+    pad.set_bluez_enabled(enabled)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 async fn pad_read_slots(address: Option<String>) -> Result<Vec<HotkeySlot>, String> {
+    if DonglePad::linked_for_slots() {
+        return tokio::task::spawn_blocking(|| {
+            let mut d = DonglePad::open().map_err(|e| e.to_string())?;
+            d.read_slots()
+                .map(|s| s.slots)
+                .map_err(|e| e.to_string())
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+    }
     with_pad(address, |pad| {
         Box::pin(async move {
             pad.read_slots()
@@ -195,8 +271,16 @@ async fn pad_read_slots(address: Option<String>) -> Result<Vec<HotkeySlot>, Stri
 
 #[tauri::command]
 async fn pad_write_slots(address: Option<String>, slots: Vec<HotkeySlot>) -> Result<(), String> {
-    if slots.len() != 18 {
-        return Err(format!("expected 18 slots, got {}", slots.len()));
+    if slots.len() != SLOT_COUNT {
+        return Err(format!("expected {SLOT_COUNT} slots, got {}", slots.len()));
+    }
+    if DonglePad::linked_for_slots() {
+        return tokio::task::spawn_blocking(move || {
+            let mut d = DonglePad::open().map_err(|e| e.to_string())?;
+            d.write_slots(&slots).map_err(|e| e.to_string())
+        })
+        .await
+        .map_err(|e| e.to_string())?;
     }
     with_pad(address, |pad| {
         Box::pin(async move {
@@ -482,6 +566,9 @@ struct ProfileFile {
     /// Portable allowlist (object id→fp, or legacy id array). Never applied live (P3-02).
     #[serde(default)]
     allowed_commands: serde_json::Value,
+    /// Optional 18-slot pad table. Older profiles omit this field.
+    #[serde(default)]
+    pad_slots: Option<Vec<HotkeySlot>>,
 }
 
 #[tauri::command]
@@ -504,6 +591,7 @@ async fn export_profile(
         composers: store.composers.clone(),
         allowed_commands: serde_json::to_value(&store.allowed_commands)
             .unwrap_or_else(|_| serde_json::json!({})),
+        pad_slots: store.pad_slots.clone(),
     };
     let json = serde_json::to_string_pretty(&profile).map_err(|e| e.to_string())?;
     std::fs::write(&path, json).map_err(|e| e.to_string())?;
@@ -588,6 +676,10 @@ fn apply_profile_file(store: &mut Store, profile: ProfileFile) -> ProfileApplySt
     } else {
         profile.composers
     };
+    // Older profiles omit pad_slots — keep whatever was already in the live store.
+    if let Some(slots) = profile.pad_slots.filter(|s| s.len() == SLOT_COUNT) {
+        store.pad_slots = Some(slots);
+    }
     let action_ids: HashSet<String> = store.actions.iter().map(|a| a.id.clone()).collect();
     // P3-02: never install allowlist from portable profile / git apply.
     merge_allowlist_after_profile(&mut store.allowed_commands, &action_ids, ignored)
@@ -644,6 +736,7 @@ async fn git_sync_push_profile(
         composers: store.composers.clone(),
         allowed_commands: serde_json::to_value(&store.allowed_commands)
             .unwrap_or_else(|_| serde_json::json!({})),
+        pad_slots: store.pad_slots.clone(),
     };
     drop(store);
     let json = serde_json::to_string_pretty(&profile).map_err(|e| e.to_string())?;

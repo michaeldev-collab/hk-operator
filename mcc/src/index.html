@@ -3,18 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>HK Operator</title>
+    <title>3DL Macro Command Center</title>
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
-    <link rel="stylesheet" href="./styles.css?v=6p8" />
+    <link rel="stylesheet" href="./styles.css?v=6p12" />
   </head>
   <body>
     <header class="topbar">
       <div class="brand">
-        <span class="logo">▣</span>
+        <img class="logo" src="./3dl-mark.png" alt="3D Design Labs" />
         <div>
-          <h1>HK Operator</h1>
-          <p class="sub">Cyberpad companion — HID + BLE macros · UI 6p7</p>
+          <h1>3DL Macro Command Center</h1>
+          <p class="sub">Cyberdeck Pad companion — HID + BLE macros · UI 6p12</p>
         </div>
       </div>
       <div class="actions">
@@ -31,13 +31,21 @@
     <section id="padPanel" class="pad-panel">
       <div class="pad-head">
         <div>
-          <h2>Cyberpad · 6 presets</h2>
+          <h2>Cyberdeck Pad · 6 presets</h2>
           <p id="padStatusLine" class="sub">Checking BlueZ…</p>
           <p class="sub pad-preset-count">Name presets below — click a title to rename · P4–P6 use dual LEDs</p>
         </div>
         <div class="pad-actions">
           <button id="padRefreshBtn" class="btn">Refresh</button>
           <button id="padSyncBtn" class="btn primary">Sync to pad</button>
+          <button
+            id="padBluezBtn"
+            class="btn"
+            type="button"
+            title="Park BlueZ so it does not fight the S3 dongle for the pad link"
+          >
+            BlueZ: …
+          </button>
           <button id="padListenBtn" class="btn">Listen for macros</button>
         </div>
       </div>
@@ -55,7 +63,7 @@
       <div class="pad-head">
         <div>
           <h2>Slash composer · ai</h2>
-          <p class="sub">Rapid-press to rotate the live slash (replaces preview). Pause ≥ timeout to lock it in, then press again to pick the next command to stack.</p>
+          <p class="sub">Bind an action of type <code>composer</code> (value <code>ai</code>) to a pad slot. Each press pastes the next token.</p>
         </div>
         <div class="pad-actions">
           <button id="composerResetBtn" class="btn" type="button">Reset cycle</button>
@@ -76,7 +84,7 @@
       <div class="pad-head">
         <div>
           <h2>Git config sync</h2>
-          <p class="sub">Clone lives under <code>~/.config/…/hk-config/</code>. Select a profile, then Pull &amp; apply (pulls git, then replaces the live store). Push current as… writes + pushes.</p>
+          <p class="sub">Clone lives under <code>~/.config/…/hk-config/</code>. Profiles include actions, bindings, preset names, <strong>and the 18 pad HID slots</strong>. Pull &amp; apply restores the store and writes slots to the pad when linked.</p>
         </div>
         <div class="pad-actions">
           <button id="gitSyncRefreshBtn" class="btn" type="button">Refresh</button>
@@ -103,9 +111,10 @@
         <button id="gitPullApplyBtn" class="btn primary" type="button">Pull &amp; apply</button>
         <button id="gitPushProfileBtn" class="btn primary" type="button">Push current as…</button>
       </div>
-      <p class="pad-hint">Needs <code>git</code> + <code>gh</code> on PATH. Uses <code>GIT_SSH_COMMAND</code> or optional <code>HK_GIT_SSH_IDENTITY</code> when set; otherwise your default SSH agent/config.</p>
+      <p class="pad-hint">Needs <code>git</code> + <code>gh</code> on PATH. SSH uses <code>~/.ssh/id_ed25519_github_account</code> when present.</p>
     </section>
 
+    <section class="controls">
       <input id="search" class="search" type="search" aria-label="Search actions by name, content, or tags" placeholder="Search name, content, tags…  (Enter copies top result)" />
       <select id="categoryFilter" class="select" aria-label="Filter by category"></select>
       <select id="typeFilter" class="select" aria-label="Filter by type"></select>
@@ -167,6 +176,6 @@
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-    <script type="module" src="./app.js?v=6p8"></script>
+    <script type="module" src="./app.js?v=6p9"></script>
   </body>
 </html>

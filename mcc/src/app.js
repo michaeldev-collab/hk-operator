@@ -8,14 +8,10 @@ import {
   uid,
   defaultComposers,
   normalizeComposers,
-  commandValueFingerprint,
-  normalizeAllowedCommands,
-  isCommandAllowed,
-  redactBleAddress,
 } from "./lib.js";
 import { SEED_ACTIONS, SEED_PAD_BINDINGS } from "./seed.js";
 
-const STORAGE_KEY = "hk.operator.actions.v1";
+const STORAGE_KEY = "3dl.macro.actions.v1";
 const BTN_NAMES = ["B2", "B4", "B5"];
 
 /**
@@ -109,7 +105,7 @@ const state = {
   padBindings: {}, // "p-a" -> actionId
   padPresetNames: defaultPresetNames(),
   composers: defaultComposers(),
-  allowedCommands: {},
+  allowedCommands: new Set(),
   query: "",
   category: "all",
   type: "all",
@@ -118,6 +114,8 @@ const state = {
   // pad
   padSlots: null, // array of 18 {mode, mod, key, label}
   padAddress: null,
+  padTransport: null, // "dongle" | "bluez" | null
+  bluezBlocked: null, // true = BlueZ parked (dongle-friendly)
   padListening: false,
   editingSlot: null, // {preset, action}
 };
@@ -142,7 +140,8 @@ function browserLoad() {
           padBindings: {},
           padPresetNames: defaultPresetNames(),
           composers: defaultComposers(),
-          allowedCommands: {},
+          allowedCommands: new Set(),
+          padSlots: null,
         };
       }
       if (parsed && Array.isArray(parsed.actions)) {
@@ -151,7 +150,11 @@ function browserLoad() {
           padBindings: parsed.padBindings || {},
           padPresetNames: normalizePresetNames(parsed.padPresetNames),
           composers: normalizeComposers(parsed.composers),
-          allowedCommands: normalizeAllowedCommands(parsed.allowedCommands),
+          allowedCommands: new Set(parsed.allowedCommands || []),
+          padSlots:
+            Array.isArray(parsed.padSlots) && parsed.padSlots.length === SLOT_COUNT
+              ? parsed.padSlots
+              : null,
         };
       }
     }
@@ -173,7 +176,8 @@ function browserLoad() {
     padBindings: remapped,
     padPresetNames,
     composers,
-    allowedCommands: {},
+    allowedCommands: [],
+    padSlots: null,
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
   return {
@@ -181,7 +185,8 @@ function browserLoad() {
     padBindings: remapped,
     padPresetNames,
     composers,
-    allowedCommands: {},
+    allowedCommands: new Set(),
+    padSlots: null,
   };
 }
 
@@ -193,7 +198,11 @@ function browserSave() {
       padBindings: state.padBindings,
       padPresetNames: normalizePresetNames(state.padPresetNames),
       composers: normalizeComposers(state.composers),
-      allowedCommands: normalizeAllowedCommands(state.allowedCommands),
+      allowedCommands: [...state.allowedCommands],
+      padSlots:
+        state.padSlots && state.padSlots.length === SLOT_COUNT
+          ? state.padSlots
+          : null,
     })
   );
 }
@@ -204,7 +213,11 @@ async function desktopLoad() {
   let padBindings = store.padBindings || {};
   let padPresetNames = normalizePresetNames(store.padPresetNames);
   let composers = normalizeComposers(store.composers);
-  let allowedCommands = normalizeAllowedCommands(store.allowedCommands);
+  let allowedCommands = new Set(store.allowedCommands || []);
+  let padSlots =
+    Array.isArray(store.padSlots) && store.padSlots.length === SLOT_COUNT
+      ? store.padSlots
+      : null;
 
   if (actions.length === 0) {
     actions = SEED_ACTIONS.map((a) => normalizeAction(a));
@@ -215,9 +228,16 @@ async function desktopLoad() {
     }
     padPresetNames = defaultPresetNames();
     composers = defaultComposers();
-    await desktopSave(actions, padBindings, allowedCommands, padPresetNames, composers);
+    await desktopSave(
+      actions,
+      padBindings,
+      allowedCommands,
+      padPresetNames,
+      composers,
+      padSlots
+    );
   }
-  return { actions, padBindings, padPresetNames, composers, allowedCommands };
+  return { actions, padBindings, padPresetNames, composers, allowedCommands, padSlots };
 }
 
 function fromRustAction(a) {
@@ -255,7 +275,8 @@ async function desktopSave(
   padBindings = state.padBindings,
   allowed = state.allowedCommands,
   padPresetNames = state.padPresetNames,
-  composers = state.composers
+  composers = state.composers,
+  padSlots = state.padSlots
 ) {
   await tauriInvoke("save_store", {
     store: {
@@ -263,7 +284,9 @@ async function desktopSave(
       padBindings,
       padPresetNames: normalizePresetNames(padPresetNames),
       composers: normalizeComposers(composers),
-      allowedCommands: normalizeAllowedCommands(allowed),
+      allowedCommands: [...allowed],
+      padSlots:
+        padSlots && padSlots.length === SLOT_COUNT ? padSlots : null,
     },
   });
 }
@@ -324,19 +347,16 @@ async function runAction(action) {
     if (action.type === "url") return openUrl(action);
     return copyValue(action);
   }
-  if (action.type === "command" && !isCommandAllowed(action, state.allowedCommands)) {
+  if (action.type === "command" && !state.allowedCommands.has(action.id)) {
     if (
       !confirm(
-        `Allow shell execution for "${action.name}"?\n\n${action.value}\n\nRe-approval is required if this command text changes.`
+        `Allow shell execution for "${action.name}"?\n\n${action.value}\n\nThis is stored until you clear allow-list data.`
       )
     ) {
       toast("Command not allowed");
       return;
     }
-    state.allowedCommands = {
-      ...state.allowedCommands,
-      [action.id]: commandValueFingerprint(action.value),
-    };
+    state.allowedCommands.add(action.id);
     await tauriInvoke("allow_command", { actionId: action.id });
     await save();
   }
@@ -456,7 +476,7 @@ function renderCards() {
       foot.append(el("button", { className: "btn", textContent: "Copy", onclick: () => copyValue(a) }));
     }
     if (isTauri() && a.type === "command") {
-      const allowed = isCommandAllowed(a, state.allowedCommands);
+      const allowed = state.allowedCommands.has(a.id);
       foot.append(
         el("button", {
           className: "btn" + (allowed ? " on" : ""),
@@ -464,10 +484,7 @@ function renderCards() {
           onclick: async () => {
             if (allowed) return;
             if (!confirm(`Allow shell for "${a.name}"?\n\n${a.value}`)) return;
-            state.allowedCommands = {
-              ...state.allowedCommands,
-              [a.id]: commandValueFingerprint(a.value),
-            };
+            state.allowedCommands.add(a.id);
             await tauriInvoke("allow_command", { actionId: a.id });
             await save();
             render();
@@ -526,7 +543,7 @@ function ensurePadGridStructure() {
   }
 
   const title = panel?.querySelector(".pad-head h2");
-  if (title) title.textContent = `Cyberpad · ${PRESET_COUNT} presets`;
+  if (title) title.textContent = `Cyberdeck Pad · ${PRESET_COUNT} presets`;
   const countLine = panel?.querySelector(".pad-preset-count");
   if (countLine) {
     countLine.textContent =
@@ -757,30 +774,105 @@ function applySlotEditor(ev) {
   );
 }
 
+function updateBluezButton() {
+  const btn = $("#padBluezBtn");
+  if (!btn) return;
+  if (state.bluezBlocked === true) {
+    btn.textContent = "BlueZ: off";
+    btn.classList.add("held");
+    btn.classList.remove("on");
+    btn.title =
+      "BlueZ is parked (blocked). Click to unblock and let BlueZ take the pad.";
+  } else if (state.bluezBlocked === false) {
+    btn.textContent = "BlueZ: on";
+    btn.classList.add("on");
+    btn.classList.remove("held");
+    btn.title =
+      "BlueZ can claim the pad. Click to park it so the S3 dongle owns the link.";
+  } else {
+    btn.textContent = "BlueZ: …";
+    btn.classList.remove("on", "held");
+    btn.title = "BlueZ status unknown — Refresh first";
+  }
+}
+
 async function refreshPad() {
   if (!isTauri()) return;
   try {
     const st = await tauriInvoke("pad_status", { address: state.padAddress });
-    state.padAddress = st.address;
-    // Live BLE advertise name is a compatibility identifier (legacy: Cyberdeck Pad).
-    // Full MAC stays in state for GATT ops; UI shows redacted form (P3-08).
-    const line = `${st.name || "Cyberdeck Pad"} · ${redactBleAddress(st.address)} · ${
+    if (st.address && st.address !== "via-s3-dongle") {
+      state.padAddress = st.address;
+    }
+    state.padTransport = st.transport || null;
+    state.bluezBlocked =
+      typeof st.bluez_blocked === "boolean" ? st.bluez_blocked : null;
+    updateBluezButton();
+    const via =
+      st.transport === "dongle"
+        ? "via S3 dongle"
+        : st.transport === "bluez"
+          ? "via BlueZ"
+          : "";
+    const bz =
+      state.bluezBlocked === true
+        ? " · BlueZ parked"
+        : state.bluezBlocked === false
+          ? " · BlueZ ready"
+          : "";
+    const line = `${st.name || "Cyberdeck Pad"} · ${st.address} · ${
       st.connected ? "connected" : "disconnected"
-    }${st.paired ? " · paired" : ""}${st.info ? " · " + st.info : ""}`;
+    }${st.paired ? " · paired" : ""}${via ? " · " + via : ""}${bz}${
+      st.info ? " · " + st.info : ""
+    }`;
     $("#padStatusLine").textContent = line;
     try {
       state.padSlots = await tauriInvoke("pad_read_slots", { address: state.padAddress });
       ensureHostBridgeSlots(state.padSlots);
-      toast("Read slots from pad");
+      toast(
+        st.transport === "dongle"
+          ? "Read slots via S3 dongle"
+          : "Read slots from pad"
+      );
+      await save();
     } catch (e) {
       if (!state.padSlots) state.padSlots = emptySlots();
-      $("#padStatusLine").textContent = line + " · GATT unavailable (flash hybrid firmware?)";
+      $("#padStatusLine").textContent =
+        line +
+        (st.transport === "dongle"
+          ? " · slots proxy unavailable (dongle not linked?)"
+          : " · GATT unavailable (flash hybrid firmware?)");
       toast(String(e));
     }
     renderPadGrid();
   } catch (e) {
     $("#padStatusLine").textContent =
-      "Cyberpad not found — pair as a keyboard (BLE name may show Cyberdeck Pad)";
+      "Pad not found — connect S3 dongle (or pair Cyberdeck Pad over BlueZ)";
+    toast(String(e));
+  }
+}
+
+async function toggleBluez() {
+  if (!isTauri()) return;
+  // Parked → release. Active/unknown → park (safer for dongle).
+  const wantEnabled = state.bluezBlocked === true;
+  try {
+    const st = await tauriInvoke("pad_set_bluez_enabled", {
+      enabled: wantEnabled,
+      address: state.padAddress,
+    });
+    if (st.address && st.address !== "via-s3-dongle") {
+      state.padAddress = st.address;
+    }
+    state.bluezBlocked =
+      typeof st.bluez_blocked === "boolean" ? st.bluez_blocked : !wantEnabled;
+    updateBluezButton();
+    toast(
+      wantEnabled
+        ? "BlueZ released — host may claim the pad"
+        : "BlueZ parked — safe for S3 dongle"
+    );
+    await refreshPad();
+  } catch (e) {
     toast(String(e));
   }
 }
@@ -799,7 +891,12 @@ async function syncPad() {
     });
     await save();
     renderPadGrid();
-    toast(`Synced ${SLOT_COUNT} slots to pad (P3 = Ctrl+Alt bridge)`);
+    toast(
+      state.padTransport === "dongle"
+        ? `Synced ${SLOT_COUNT} slots via S3 dongle`
+        : `Synced ${SLOT_COUNT} slots to pad (P3 = Ctrl+Alt bridge)`
+    );
+    await save();
   } catch (e) {
     toast(String(e));
   }
@@ -883,7 +980,7 @@ function exportJson() {
     padBindings: state.padBindings,
     padPresetNames: normalizePresetNames(state.padPresetNames),
     composers: normalizeComposers(state.composers),
-    allowedCommands: normalizeAllowedCommands(state.allowedCommands),
+    allowedCommands: [...state.allowedCommands],
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
@@ -993,8 +1090,8 @@ async function importProfileDisk() {
     return;
   }
   const path = prompt(
-    "Profile name or path under ~/.config/hk-operator/profiles/ (or hk-config/profiles/)",
-    "dev"
+    "Path to profile JSON",
+    `${(window.__MCC_HOME_HINT || "~")}/.config/3dl-macro-command-center/profiles/dev.json`
   );
   if (!path) return;
   if (
@@ -1018,8 +1115,13 @@ function applyStoreFromRust(store) {
   state.padBindings = store.padBindings || {};
   state.padPresetNames = normalizePresetNames(store.padPresetNames);
   state.composers = normalizeComposers(store.composers);
-  state.allowedCommands = normalizeAllowedCommands(store.allowedCommands);
+  state.allowedCommands = new Set(store.allowedCommands || []);
+  if (Array.isArray(store.padSlots) && store.padSlots.length === SLOT_COUNT) {
+    state.padSlots = store.padSlots;
+    ensureHostBridgeSlots(state.padSlots);
+  }
   render();
+  renderPadGrid();
   renderComposerPanel();
 }
 
@@ -1028,7 +1130,10 @@ function fillGitProfileSelect(profiles, active) {
   if (!sel) return;
   const cur = sel.value;
   sel.replaceChildren();
-  const empty = el("option", { value: "", textContent: profiles?.length ? "Select…" : "No profiles yet" });
+  const empty = el("option", {
+    value: "",
+    textContent: profiles?.length ? "Select…" : "No profiles yet",
+  });
   sel.append(empty);
   for (const name of profiles || []) {
     sel.append(el("option", { value: name, textContent: name }));
@@ -1123,30 +1228,29 @@ async function gitPullApply() {
   }
   try {
     const result = await tauriInvoke("git_sync_pull_apply", { name });
-    // Backward-compatible: older builds returned the store directly.
     const store = result?.store ?? result;
     applyStoreFromRust(store);
-    renderPadGrid();
     const pullMsg = result?.pullMessage || result?.pull_message || "";
     const count =
       result?.actionCount ??
       result?.action_count ??
       store?.actions?.length ??
       state.actions.length;
-    const unchanged = !!(result?.unchanged);
+    const unchanged = !!result?.unchanged;
     const profile = result?.profile || name;
-    const ignored =
-      result?.profileAllowlistIgnored ?? result?.profile_allowlist_ignored ?? 0;
-    const allowNote =
-      ignored > 0
-        ? ` Shell allowlist from profile ignored (${ignored} ids) — re-approve in UI if needed.`
-        : " Shell approvals stay machine-local (profile allowlist not imported).";
+    const slotCount =
+      result?.padSlotCount ?? result?.pad_slot_count ?? 0;
+    const padWrite = result?.padWrite || result?.pad_write || "";
+    const slotNote =
+      slotCount === SLOT_COUNT
+        ? ` · ${SLOT_COUNT} pad slots${padWrite ? ` (${padWrite})` : ""}`
+        : " · no pad slots in profile";
     if (unchanged) {
       toast(
-        `Applied "${profile}" (${count} actions) — already matched live store. ${pullMsg}${allowNote}`.trim()
+        `Applied "${profile}" (${count} actions)${slotNote} — already matched live store. ${pullMsg}`.trim()
       );
     } else {
-      toast(`Applied "${profile}" (${count} actions). ${pullMsg}${allowNote}`.trim());
+      toast(`Applied "${profile}" (${count} actions)${slotNote}. ${pullMsg}`.trim());
     }
     await refreshGitSyncStatus();
   } catch (e) {
@@ -1160,8 +1264,10 @@ async function gitPushProfile() {
   const name = prompt("Profile name to push", suggested);
   if (!name) return;
   try {
+    // Persist current padSlots (from Refresh/edits) into the store before export.
+    await save();
     const msg = await tauriInvoke("git_sync_push_profile", { name });
-    toast(String(msg).slice(0, 140));
+    toast(String(msg).slice(0, 160));
     await refreshGitSyncStatus();
     const sel = $("#gitProfileSelect");
     if (sel) sel.value = name.trim();
@@ -1209,16 +1315,16 @@ async function init() {
     state.padPresetNames = normalizePresetNames(loaded.padPresetNames);
     state.composers = normalizeComposers(loaded.composers);
     state.allowedCommands = loaded.allowedCommands;
+    if (loaded.padSlots && loaded.padSlots.length === SLOT_COUNT) {
+      state.padSlots = loaded.padSlots;
+    }
     renderPadGrid();
     renderComposerPanel();
     await tauriListen("macro-fired", async (p) => {
       const msg = String(p.result || "");
       toast(`Macro ${presetDisplayName(p.preset ?? 0)}/${BTN_NAMES[p.action] || p.action}: ${msg}`);
       // If a command was blocked, offer Allow + retry once.
-      if (
-        (msg.includes("not allowed yet") || msg.includes("value changed since approval")) &&
-        p.actionId
-      ) {
+      if (msg.includes("not allowed yet") && p.actionId) {
         const act = state.actions.find((a) => a.id === p.actionId);
         if (
           act &&
@@ -1226,10 +1332,7 @@ async function init() {
             `Allow shell for "${act.name}" so pad macros can run it?\n\n${act.value}`
           )
         ) {
-          state.allowedCommands = {
-            ...state.allowedCommands,
-            [act.id]: commandValueFingerprint(act.value),
-          };
+          state.allowedCommands.add(act.id);
           await tauriInvoke("allow_command", { actionId: act.id });
           await save();
           try {
@@ -1251,6 +1354,7 @@ async function init() {
     });
     $("#padRefreshBtn").addEventListener("click", refreshPad);
     $("#padSyncBtn").addEventListener("click", syncPad);
+    $("#padBluezBtn").addEventListener("click", toggleBluez);
     $("#padListenBtn").addEventListener("click", toggleListen);
     $("#s_mode").addEventListener("change", syncSlotModeFields);
     $("#slotForm").addEventListener("submit", applySlotEditor);
@@ -1274,6 +1378,9 @@ async function init() {
     state.padPresetNames = normalizePresetNames(loaded.padPresetNames);
     state.composers = normalizeComposers(loaded.composers);
     state.allowedCommands = loaded.allowedCommands;
+    if (loaded.padSlots && loaded.padSlots.length === SLOT_COUNT) {
+      state.padSlots = loaded.padSlots;
+    }
     renderPadGrid();
     renderComposerPanel();
   }
