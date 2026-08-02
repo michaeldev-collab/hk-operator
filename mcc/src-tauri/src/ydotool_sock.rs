@@ -3,6 +3,7 @@
 //! Never default to a world-shared `/tmp` socket. Prefer an owner-only
 //! runtime path and spawn ydotoold with mode `0600`.
 
+use std::ffi::OsString;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -31,16 +32,25 @@ pub fn metadata_allows_non_owner(meta: &fs::Metadata) -> bool {
     socket_mode_allows_non_owner(meta.permissions().mode())
 }
 
-/// Prefer `YDOTOOL_SOCKET`, then `$XDG_RUNTIME_DIR/<app>/ydotool.sock`,
-/// then config-dir fallback — never a world-shared `/tmp` default.
-pub fn resolve_ydotool_socket(config_dir: Option<&Path>) -> ResolvedYdotoolSocket {
-    if let Some(p) = std::env::var_os("YDOTOOL_SOCKET") {
-        return ResolvedYdotoolSocket {
-            path: PathBuf::from(p),
-            external_override: true,
-        };
+/// Pure resolver: prefer override, then runtime dir, then config-dir fallback.
+/// Never a world-shared `/tmp` default.
+///
+/// Production passes env via [`resolve_ydotool_socket`]; tests inject controlled
+/// inputs without mutating process environment.
+pub fn resolve_ydotool_socket_from(
+    override_path: Option<OsString>,
+    runtime_dir: Option<OsString>,
+    config_dir: Option<&Path>,
+) -> ResolvedYdotoolSocket {
+    if let Some(p) = override_path {
+        if !p.is_empty() {
+            return ResolvedYdotoolSocket {
+                path: PathBuf::from(p),
+                external_override: true,
+            };
+        }
     }
-    if let Ok(runtime) = std::env::var("XDG_RUNTIME_DIR") {
+    if let Some(runtime) = runtime_dir {
         if !runtime.is_empty() {
             return ResolvedYdotoolSocket {
                 path: PathBuf::from(runtime)
@@ -62,6 +72,16 @@ pub fn resolve_ydotool_socket(config_dir: Option<&Path>) -> ResolvedYdotoolSocke
         path,
         external_override: false,
     }
+}
+
+/// Prefer `YDOTOOL_SOCKET`, then `$XDG_RUNTIME_DIR/<app>/ydotool.sock`,
+/// then config-dir fallback.
+pub fn resolve_ydotool_socket(config_dir: Option<&Path>) -> ResolvedYdotoolSocket {
+    resolve_ydotool_socket_from(
+        std::env::var_os("YDOTOOL_SOCKET"),
+        std::env::var_os("XDG_RUNTIME_DIR"),
+        config_dir,
+    )
 }
 
 /// Path-only helper (drops the override flag). Kept for callers that only need the path.
@@ -233,11 +253,40 @@ mod tests {
 
     #[test]
     fn config_dir_path_is_not_marked_external() {
-        let r = resolve_ydotool_socket(Some(Path::new("/tmp/hk-cfg-test")));
-        // Without YDOTOOL_SOCKET this is either runtime or config — never external.
-        // If XDG_RUNTIME_DIR is set, path won't be under /tmp/hk-cfg-test.
+        let r = resolve_ydotool_socket_from(
+            None,
+            None,
+            Some(Path::new("/tmp/hk-cfg-test")),
+        );
         assert!(!r.external_override);
-        assert!(!r.path.to_string_lossy().contains("/tmp/.ydotool"));
+        assert_eq!(r.path, PathBuf::from("/tmp/hk-cfg-test/ydotool.sock"));
+    }
+
+    #[test]
+    fn runtime_dir_beats_config_and_is_managed() {
+        let r = resolve_ydotool_socket_from(
+            None,
+            Some(OsString::from("/run/user/1000")),
+            Some(Path::new("/tmp/hk-cfg-test")),
+        );
+        assert!(!r.external_override);
+        assert_eq!(
+            r.path,
+            PathBuf::from("/run/user/1000")
+                .join(RUNTIME_APP_DIR)
+                .join("ydotool.sock")
+        );
+    }
+
+    #[test]
+    fn override_path_is_marked_external() {
+        let r = resolve_ydotool_socket_from(
+            Some(OsString::from("/some/shared/path/ydotool.sock")),
+            Some(OsString::from("/run/user/1000")),
+            Some(Path::new("/tmp/hk-cfg-test")),
+        );
+        assert!(r.external_override);
+        assert_eq!(r.path, PathBuf::from("/some/shared/path/ydotool.sock"));
     }
 
     #[test]
