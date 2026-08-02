@@ -1043,8 +1043,9 @@ fn main() {
             }
             {
                 let writer = state.field_writer.clone();
+                let runtime = state.composer.clone();
                 tauri::async_runtime::spawn(async move {
-                    composer_write::writer_loop(writer).await;
+                    composer_write::writer_loop(writer, runtime).await;
                 });
             }
             space_listen::spawn_space_listener(

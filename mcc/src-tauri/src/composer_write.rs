@@ -12,8 +12,9 @@
 //!
 //! Focus safety: capture the active window when a composition session begins.
 //! Every field mutation re-checks that window; on mismatch, abort without
-//! emitting keystrokes and reset writer preview state.
+//! emitting keystrokes and reset both the field writer and composer runtime.
 
+use crate::composer::{reset_composer_runtime, ComposerRuntime};
 use crate::ydotool_sock::ensure_ydotoold;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -392,7 +393,21 @@ fn apply_once(
     }
 }
 
-pub async fn writer_loop(writer: Arc<FieldWriter>) {
+/// Reset field writer + composer FSM together (focus abort / session wipe).
+async fn abort_composition_session(
+    writer: &FieldWriter,
+    runtime: &Mutex<ComposerRuntime>,
+) {
+    writer.reset().await;
+    let mut rt = runtime.lock().await;
+    reset_composer_runtime(&mut rt, None);
+    eprintln!("[composer-write] aborted — writer + composer runtime cleared");
+}
+
+pub async fn writer_loop(
+    writer: Arc<FieldWriter>,
+    runtime: Arc<Mutex<ComposerRuntime>>,
+) {
     loop {
         writer.notify.notified().await;
         loop {
@@ -410,7 +425,7 @@ pub async fn writer_loop(writer: Arc<FieldWriter>) {
                     notify_focus_abort(
                         "Could not lock target window — focus a text field and double-tap again.",
                     );
-                    writer.reset().await;
+                    abort_composition_session(&writer, &runtime).await;
                     break;
                 }
             };
@@ -455,7 +470,7 @@ pub async fn writer_loop(writer: Arc<FieldWriter>) {
                         notify_focus_abort(
                             "Focus left the target window — composition aborted. Reset or double-tap to restart.",
                         );
-                        writer.reset().await;
+                        abort_composition_session(&writer, &runtime).await;
                         break;
                     }
                 }
@@ -537,5 +552,41 @@ mod tests {
     fn focus_mismatch_error_is_prefixed() {
         let err = verify_focus("kwin:99999999").unwrap_err();
         assert!(err.starts_with("focus:"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn abort_clears_writer_and_composer_runtime() {
+        use crate::composer::ComposerRuntime;
+        use std::time::Instant;
+
+        let w = FieldWriter::new();
+        w.set_on_screen(Some("/review".into())).await;
+        {
+            let mut g = w.state.lock().await;
+            g.target_window = Some("kwin:1".into());
+            g.locked = "/help ".into();
+        }
+        let runtime = Arc::new(Mutex::new(ComposerRuntime::default()));
+        {
+            let mut rt = runtime.lock().await;
+            rt.picking.insert("ai".into(), true);
+            rt.index.insert("ai".into(), 1);
+            rt.last_text.insert("ai".into(), "/review".into());
+            rt.last_tap.insert("ai".into(), Instant::now());
+            rt.committed.insert("ai".into(), 1);
+        }
+
+        abort_composition_session(&w, &runtime).await;
+
+        let (locked, on_screen) = w.snapshot().await;
+        assert!(locked.is_empty());
+        assert!(on_screen.is_none());
+        assert!(w.state.lock().await.target_window.is_none());
+        let rt = runtime.lock().await;
+        assert!(!rt.picking.get("ai").copied().unwrap_or(false));
+        assert!(rt.index.is_empty());
+        assert!(rt.last_text.is_empty());
+        assert!(rt.last_tap.is_empty());
+        assert!(rt.committed.is_empty());
     }
 }
