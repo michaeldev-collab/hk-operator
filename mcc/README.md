@@ -1,12 +1,15 @@
 # HK Operator — Mission Control Center (MCC)
 
-Desktop companion for **Cyberpad** (ESP32-C6 BLE HID hotkeys) plus a local action
-catalog (prompts, URLs, commands, paths).
+Desktop companion for **Cyberpad** (ESP32-C6) plus a local action catalog
+(prompts, URLs, commands, paths).
 
-Hybrid model:
-- **HID slots** — Cyberpad types keystrokes itself (works with this app closed).
-- **Macro slots** — Cyberpad notifies this desktop app over custom GATT on the
-  **same** BlueZ link as the keyboard; the app runs the real action.
+Validated host transports:
+- **Preferred** — Cyberpad C6 → S3 dongle → USB HID/CDC → MCC (BlueZ blocked on the pad).
+- **Fallback** — Cyberpad C6 → direct BLE HID/GATT → BlueZ/MCC.
+
+Hybrid behavior:
+- **HID slots** — keystrokes reach the host (via S3 USB HID or direct BLE HID); works with MCC closed for typing.
+- **Macro / slots control** — MCC runs richer actions; slot sync prefers dongle CDC when linked, else BlueZ GATT.
 
 Firmware: [`../firmware/`](../firmware/)  
 Protocol: [`protocol/PROTOCOL.md`](protocol/PROTOCOL.md)  
@@ -34,7 +37,8 @@ Persistence: `~/.config/hk-operator/store.json`
 **Slash composer:** bind type `composer` (value `ai`) to a pad key. **Double-tap**
 starts or rotates the live slash; **Space** commits; double-tap again stacks the
 next command. New loop = UI **Reset cycle** or a `composer-reset` action (no idle
-timeout, Esc left alone for Cursor).
+timeout, Esc left alone for Cursor). The writer captures the focused window at
+session start and aborts (no Ctrl+A/Delete) if focus moves away mid-compose.
 
 **Commands never run silently** — click **Allow shell** (or confirm on first Run).
 
@@ -46,9 +50,12 @@ cargo run -p cyberdeck-probe -- read-slots
 cargo run -p cyberdeck-probe -- listen
 ```
 
-Pair Cyberpad as a Bluetooth keyboard first. The OS may show the legacy BLE
-advertised name **`Cyberdeck Pad`**. The probe/app talk GATT on that existing
-connection — they do not open a second BLE link.
+**Dongle mode:** keep the pad blocked/disconnected in BlueZ so the S3 bridge owns
+the BLE central slot. MCC Refresh should show `via S3 dongle` when linked.
+
+**Direct BLE mode:** pair Cyberpad as a Bluetooth keyboard first. The OS may show
+the legacy advertised name **`Cyberdeck Pad`**. Probe/MCC talk GATT on that
+existing bond — they do not open a second BLE link.
 
 ## Firmware (compile only until you approve flash)
 ```bash

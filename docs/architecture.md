@@ -6,21 +6,30 @@ application that resolves Cyberpad events against portable configuration.
 
 ## System overview
 
-Three primary layers:
+Four primary pieces:
 
-1. **Cyberpad firmware** — switch matrix, presets, LEDs, BLE HID, custom GATT
-2. **HK Operator MCC** — BlueZ host, bindings, action dispatch, UI, sync
-3. **Portable configuration** — profiles, actions, composers, allowlists
+1. **Cyberpad firmware (ESP32-C6)** — switch matrix, presets, LEDs, BLE HID, custom GATT
+2. **Optional S3 dongle** — BLE central to the pad; USB HID keyboard + CDC control to the host
+3. **HK Operator MCC** — bindings, action dispatch, UI, sync (dongle CDC preferred; BlueZ fallback)
+4. **Portable configuration** — profiles, actions, composers, allowlists
 
 ```text
-┌─────────────┐     BLE HID + GATT      ┌─────────────────┐
-│  Cyberpad   │◄───────────────────────►│  MCC (desktop)  │
-│  firmware   │     (one BlueZ bond)    │  Tauri / Rust   │
-└─────────────┘                         └────────┬────────┘
-                                                 │
-                                                 ▼
-                                        ~/.config/hk-operator/
-                                        (+ optional hk-config git)
+Preferred (validated dongle path)
+─────────────────────────────────
+┌─────────────┐   BLE    ┌─────────────┐  USB HID/CDC  ┌─────────────────┐
+│  Cyberpad   │─────────►│  S3 dongle  │──────────────►│  MCC (desktop)  │
+│  C6         │          │  bridge     │               │  Tauri / Rust   │
+└─────────────┘          └─────────────┘               └────────┬────────┘
+   (BlueZ blocked on pad while dongle owns the link)            │
+                                                                ▼
+                                                       ~/.config/hk-operator/
+
+Fallback (direct BLE)
+─────────────────────
+┌─────────────┐   BLE HID + GATT   ┌─────────────────┐
+│  Cyberpad   │◄──────────────────►│  MCC / BlueZ    │
+│  C6         │  (one host bond)   │  Tauri / Rust   │
+└─────────────┘                    └─────────────────┘
 ```
 
 ## Responsibilities
@@ -36,12 +45,13 @@ Three primary layers:
 
 ### MCC
 
-- Discover and communicate with Cyberpad through BlueZ
-- Resolve button events against configuration
+- Prefer the S3 dongle USB CDC path for slot read/write when linked; fall back to BlueZ GATT
+- Resolve button / fire-API events against configuration
 - Dispatch local actions
 - Manage profiles and bindings
 - Perform clipboard, keyboard, process-launch, URL, path, and composer actions
 - Gate shell execution through explicit permission
+- Keep ydotoold on an owner-only socket (never world-writable `/tmp`)
 - Import, export, and synchronize portable configuration
 
 ### Configuration
@@ -63,27 +73,26 @@ Cyberpad firmware
         ↓
 Is binding HID or Macro?
         ↓
-HID: send keyboard report directly
-        OR
-Macro: emit GATT MacroEvent
+Preferred: HID report → S3 dongle → host USB HID
+            Macro / slots → S3 CDC → MCC
+        OR (fallback)
+HID: BLE keyboard report to BlueZ
+Macro: GATT MacroEvent → BlueZ → MCC listener
         ↓
-BlueZ connection
-        ↓
-Rust listener
-        ↓
-Binding resolver
+Binding resolver / fire API
         ↓
 Action dispatcher
         ↓
 Clipboard / keyboard / URL / process / composer adapter
 ```
 
-## Hybrid HID and GATT design
+## Hybrid HID, GATT, and dongle design
 
-- **HID** preserves independent, low-friction keyboard behavior when MCC is closed
-- **GATT** enables richer desktop-side actions (shell, composers, URLs, paths)
-- The same bonded BlueZ connection is reused — MCC does not open a second BLE link
-- Failure of MCC does not remove all useful device behavior (HID slots still work)
+- **USB HID via S3** is the preferred daily path when the validation dongle is linked
+- **Direct BLE HID** remains the offline / no-dongle fallback
+- **GATT / CDC slots** enable richer desktop-side actions (shell, composers, URLs, paths, slot sync)
+- On the direct path, the same bonded BlueZ connection is reused — MCC does not open a second BLE link
+- Failure of MCC does not remove all useful device behavior (HID slots still type)
 
 ## State and persistence
 

@@ -24,17 +24,32 @@ grew around that validated device rather than replacing it.
 
 ## Architecture
 
+Two validated host transports (prefer the dongle path when the S3 bridge is linked):
+
 ```text
-Cyberpad (ESP32-C6)     MCC (Tauri / Rust / BlueZ)     Config
-─────────────────       ──────────────────────────     ──────
-BLE HID + GATT          Profiles, bindings, UI         Portable JSON
-Presets / LEDs          Dispatch, paste, composers     Examples only in git
-Button events           OS adapters (clipboard, …)     Runtime under ~/.config
+Preferred
+─────────
+Cyberpad C6 ──BLE──► S3 dongle ──USB HID/CDC──► Host / MCC
+                     (slots + keystream proxied; BlueZ blocked on pad)
+
+Fallback
+────────
+Cyberpad C6 ──BLE HID + GATT──► BlueZ / MCC
+(direct bond; MCC listens on the same link)
+```
+
+```text
+Cyberpad (ESP32-C6)     Transport                 MCC (Tauri / Rust)     Config
+─────────────────       ─────────                 ──────────────────     ──────
+Presets / LEDs          S3 USB HID/CDC (preferred) Profiles, bindings, UI Portable JSON
+Button events           or direct BLE HID/GATT     Dispatch, composers    Examples only in git
+Slots GATT              (BlueZ fallback)           OS adapters            ~/.config/hk-operator/
 ```
 
 | Layer | Path |
 | --- | --- |
 | Cyberpad firmware | [`firmware/`](./firmware/) |
+| S3 dongle validation | [`firmware/s3-dongle-validation/`](./firmware/s3-dongle-validation/) |
 | Desktop MCC | [`mcc/`](./mcc/) |
 | Example profiles | [`config/examples/`](./config/examples/) |
 
@@ -59,8 +74,10 @@ Export/import portable JSON from the MCC UI, or copy
 [`config/examples/dev.json`](./config/examples/dev.json) into your profiles directory.
 
 ## Slash composer
-Bind an action of type `composer` with value `ai`. Rapid-press live-rotates the
-slash preview; pause ≥ timeout locks it in; press again to pick the next token to stack.
+Bind an action of type `composer` with value `ai`. **Double-tap** starts or
+rotates the live slash; **Space** commits; double-tap again stacks the next
+token. New loop = UI **Reset cycle** or a `composer-reset` action (no idle
+timeout). See [`mcc/README.md`](./mcc/README.md).
 
 ## Git config sync
 From the MCC **Git config sync** panel: init `~/.config/hk-operator/hk-config/`,

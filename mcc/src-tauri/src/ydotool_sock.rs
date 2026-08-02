@@ -1,11 +1,18 @@
 //! ydotool / ydotoold socket path and permission policy (P3-04).
+//!
+//! Never default to a world-shared `/tmp` socket. Prefer an owner-only
+//! runtime path and spawn ydotoold with mode `0600`.
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
 /// Socket mode passed to `ydotoold -P` — owner-only (not world-writable).
 pub const YDOTOOLD_SOCKET_MODE: &str = "0600";
+
+/// Runtime subdirectory under `$XDG_RUNTIME_DIR` / config fallback.
+const RUNTIME_APP_DIR: &str = "hk-operator";
 
 /// True when group/other have any access bits (world/group reachable).
 pub fn socket_mode_allows_non_owner(mode: u32) -> bool {
@@ -25,7 +32,7 @@ pub fn resolve_ydotool_socket_path(config_dir: Option<&Path>) -> PathBuf {
     if let Ok(runtime) = std::env::var("XDG_RUNTIME_DIR") {
         if !runtime.is_empty() {
             return PathBuf::from(runtime)
-                .join("hk-operator")
+                .join(RUNTIME_APP_DIR)
                 .join("ydotool.sock");
         }
     }
@@ -34,7 +41,7 @@ pub fn resolve_ydotool_socket_path(config_dir: Option<&Path>) -> PathBuf {
     }
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("hk-operator")
+        .join(RUNTIME_APP_DIR)
         .join("ydotool.sock")
 }
 
@@ -70,6 +77,28 @@ pub fn prepare_ydotool_socket(sock: &Path) -> Result<bool, String> {
         return Ok(false);
     }
     Ok(true)
+}
+
+/// Ensure ydotoold is up with an owner-only socket (P3-04).
+pub fn ensure_ydotoold(config_dir: Option<&Path>) -> PathBuf {
+    let sock = resolve_ydotool_socket_path(config_dir);
+    match prepare_ydotool_socket(&sock) {
+        Ok(true) => return sock,
+        Ok(false) => {}
+        Err(e) => {
+            eprintln!("[mcc] ydotool socket prepare failed: {e}");
+            return sock;
+        }
+    }
+    let args = ydotoold_spawn_args(&sock);
+    let _ = Command::new("ydotoold")
+        .args(&args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn();
+    std::thread::sleep(std::time::Duration::from_millis(250));
+    sock
 }
 
 #[cfg(test)]
@@ -140,12 +169,8 @@ mod tests {
 
     #[test]
     fn default_path_avoids_tmp_when_runtime_set() {
-        // Only assert helper shape with explicit config_dir (env may vary in CI).
-        let p = resolve_ydotool_socket_path(Some(Path::new("/tmp/hk-cfg-test")));
-        // Without YDOTOOL_SOCKET override this uses runtime or config — config fallback:
-        // If XDG_RUNTIME_DIR is set in this environment, path won't be under /tmp/hk-cfg-test.
-        let _ = p;
         let args = ydotoold_spawn_args(Path::new("/x/y.sock"));
         assert_eq!(args[3], YDOTOOLD_SOCKET_MODE);
+        assert!(!args.iter().any(|a| a.contains("/tmp/.ydotool")));
     }
 }

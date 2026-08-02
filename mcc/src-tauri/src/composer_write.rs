@@ -9,7 +9,13 @@
 //! - **Fresh** (`locked` empty): Ctrl+A → Delete → paste preview
 //! - **Stack** (`locked` non-empty): bulk-select last N preview chars → Delete
 //!   → paste new preview only (Cursor chips / committed text stay intact)
+//!
+//! Focus safety: capture the active window when a composition session begins.
+//! Every field mutation re-checks that window; on mismatch, abort without
+//! emitting keystrokes and reset writer preview state.
 
+use crate::ydotool_sock::ensure_ydotoold;
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::time::Duration;
@@ -29,11 +35,14 @@ struct WriterState {
     locked: String,
     /// Watchdog: last painted preview (length drives bulk select-on-rotate).
     on_screen: Option<String>,
+    /// Active window id captured at composition start (`kwin:` / `x11:`).
+    target_window: Option<String>,
 }
 
 pub struct FieldWriter {
     state: Mutex<WriterState>,
     notify: Notify,
+    config_dir: Option<PathBuf>,
 }
 
 #[cfg(test)]
@@ -60,14 +69,20 @@ pub fn segment_erase_len(on_screen: Option<&str>, erase_hint: usize) -> usize {
 
 impl FieldWriter {
     pub fn new() -> Self {
+        Self::with_config_dir(None)
+    }
+
+    pub fn with_config_dir(config_dir: Option<PathBuf>) -> Self {
         Self {
             state: Mutex::new(WriterState {
                 desired: None,
                 next_gen: 1,
                 locked: String::new(),
                 on_screen: None,
+                target_window: None,
             }),
             notify: Notify::new(),
+            config_dir,
         }
     }
 
@@ -101,7 +116,21 @@ impl FieldWriter {
         g.locked.clear();
         g.on_screen = None;
         g.desired = None;
+        g.target_window = None;
         eprintln!("[composer-write] reset");
+    }
+
+    /// Capture active window on first write of a session; reuse afterward.
+    async fn capture_or_get_target(&self) -> Result<String, String> {
+        let mut g = self.state.lock().await;
+        if let Some(t) = g.target_window.clone() {
+            return Ok(t);
+        }
+        let id = active_window_id()
+            .ok_or_else(|| "focus: could not determine active window".to_string())?;
+        eprintln!("[composer-write] target window={id}");
+        g.target_window = Some(id.clone());
+        Ok(id)
     }
 
     async fn take_desired(&self) -> Option<WriteRequest> {
@@ -116,38 +145,69 @@ impl FieldWriter {
     async fn set_on_screen(&self, text: Option<String>) {
         self.state.lock().await.on_screen = text;
     }
+
+    fn ydotool_socket(&self) -> PathBuf {
+        ensure_ydotoold(self.config_dir.as_deref())
+    }
 }
 
 fn sleep_ms(ms: u64) {
     std::thread::sleep(Duration::from_millis(ms));
 }
 
-fn ydotoold_socket() -> std::path::PathBuf {
-    std::env::var_os("YDOTOOL_SOCKET")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| std::path::PathBuf::from("/tmp/.ydotool_socket"))
-}
-
-fn ensure_ydotoold() {
-    let sock = ydotoold_socket();
-    if sock.exists() {
-        return;
+/// Best-effort active window id (KWin DBus, then xdotool).
+fn active_window_id() -> Option<String> {
+    if let Ok(out) = Command::new("qdbus6")
+        .args([
+            "org.kde.KWin",
+            "/KWin",
+            "org.kde.KWin.activeWindow",
+        ])
+        .output()
+    {
+        if out.status.success() {
+            let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !s.is_empty() && s != "0" {
+                return Some(format!("kwin:{s}"));
+            }
+        }
     }
-    let sock_str = sock.to_string_lossy().into_owned();
-    let _ = Command::new("ydotoold")
-        .args(["-p", &sock_str, "-P", "0666"])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn();
-    sleep_ms(250);
+    if let Ok(out) = Command::new("xdotool")
+        .args(["getactivewindow"])
+        .output()
+    {
+        if out.status.success() {
+            let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !s.is_empty() {
+                return Some(format!("x11:{s}"));
+            }
+        }
+    }
+    None
 }
 
-fn ydotool_key(args: &[String]) -> Result<(), String> {
-    ensure_ydotoold();
-    let sock = ydotoold_socket();
+fn verify_focus(expected: &str) -> Result<(), String> {
+    match active_window_id() {
+        Some(got) if got == expected => Ok(()),
+        Some(got) => Err(format!("focus: expected {expected}, got {got}")),
+        None => Err("focus: could not determine active window".into()),
+    }
+}
+
+fn notify_focus_abort(detail: &str) {
+    let _ = Command::new("notify-send")
+        .args([
+            "-a",
+            "MCC Pad",
+            "composer aborted",
+            detail,
+        ])
+        .status();
+}
+
+fn ydotool_key(sock: &PathBuf, args: &[String]) -> Result<(), String> {
     let status = Command::new("ydotool")
-        .env("YDOTOOL_SOCKET", &sock)
+        .env("YDOTOOL_SOCKET", sock)
         .args(args)
         .status()
         .map_err(|e| format!("ydotool key failed: {e}"))?;
@@ -157,26 +217,32 @@ fn ydotool_key(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-fn chord_ctrl(key_code: u16) -> Result<(), String> {
+fn chord_ctrl(sock: &PathBuf, key_code: u16) -> Result<(), String> {
     let k = key_code.to_string();
-    ydotool_key(&[
-        "key".into(),
-        "--key-delay=18".into(),
-        "29:1".into(),
-        format!("{k}:1"),
-        format!("{k}:0"),
-        "29:0".into(),
-    ])
+    ydotool_key(
+        sock,
+        &[
+            "key".into(),
+            "--key-delay=18".into(),
+            "29:1".into(),
+            format!("{k}:1"),
+            format!("{k}:0"),
+            "29:0".into(),
+        ],
+    )
 }
 
-fn tap_key(key_code: u16) -> Result<(), String> {
+fn tap_key(sock: &PathBuf, key_code: u16) -> Result<(), String> {
     let k = key_code.to_string();
-    ydotool_key(&[
-        "key".into(),
-        "--key-delay=15".into(),
-        format!("{k}:1"),
-        format!("{k}:0"),
-    ])
+    ydotool_key(
+        sock,
+        &[
+            "key".into(),
+            "--key-delay=15".into(),
+            format!("{k}:1"),
+            format!("{k}:0"),
+        ],
+    )
 }
 
 fn klipper_set(text: &str) -> bool {
@@ -208,27 +274,29 @@ fn set_clipboard_fast(text: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn select_all_clear() -> Result<(), String> {
+fn select_all_clear(sock: &PathBuf, target: &str) -> Result<(), String> {
+    verify_focus(target)?;
     // Single Ctrl+A is enough when paced; double only on fresh-field first paint.
-    chord_ctrl(30)?; // A
+    chord_ctrl(sock, 30)?; // A
     sleep_ms(35);
-    tap_key(111)?; // DELETE
+    verify_focus(target)?;
+    tap_key(sock, 111)?; // DELETE
     sleep_ms(35);
     Ok(())
 }
 
-fn paste_chord() -> Result<(), String> {
-    chord_ctrl(47)?; // V
+fn paste_chord(sock: &PathBuf, target: &str) -> Result<(), String> {
+    verify_focus(target)?;
+    chord_ctrl(sock, 47)?; // V
     sleep_ms(50);
     Ok(())
 }
 
-fn type_text(text: &str) -> Result<(), String> {
+fn type_text(sock: &PathBuf, target: &str, text: &str) -> Result<(), String> {
     use std::io::Write;
-    ensure_ydotoold();
-    let sock = ydotoold_socket();
+    verify_focus(target)?;
     let mut child = Command::new("ydotool")
-        .env("YDOTOOL_SOCKET", &sock)
+        .env("YDOTOOL_SOCKET", sock)
         .args(["type", "--key-delay=5", "--escape=0", "-f", "-"])
         .stdin(Stdio::piped())
         .spawn()
@@ -253,44 +321,49 @@ fn type_text(text: &str) -> Result<(), String> {
 /// Shift+Left bursts were dropping events in Cursor/Chrome (left `/3`, `/3d`
 /// stubs). Backspace × N at a moderate delay is slower than 5ms Left but much
 /// more reliable — and still far faster than the old 40ms chunked path.
-fn erase_trailing_chars(n: usize) -> Result<(), String> {
+fn erase_trailing_chars(sock: &PathBuf, target: &str, n: usize) -> Result<(), String> {
     if n == 0 {
         return Ok(());
     }
+    verify_focus(target)?;
     // KEY_BACKSPACE=14
     let mut args: Vec<String> = vec!["key".into(), "--key-delay=12".into()];
     for _ in 0..n {
         args.push("14:1".into());
         args.push("14:0".into());
     }
-    ydotool_key(&args)?;
+    ydotool_key(sock, &args)?;
     sleep_ms(35);
     Ok(())
 }
 
-fn insert_text(text: &str) -> Result<(), String> {
+fn insert_text(sock: &PathBuf, target: &str, text: &str) -> Result<(), String> {
     set_clipboard_fast(text)?;
-    match paste_chord() {
+    match paste_chord(sock, target) {
         Ok(()) => {
             eprintln!("[composer-write] paste ok len={}", text.len());
             Ok(())
         }
+        Err(e) if e.starts_with("focus:") => Err(e),
         Err(e) => {
             eprintln!("[composer-write] paste failed ({e}) — type fallback");
-            type_text(text)
+            type_text(sock, target, text)
         }
     }
 }
 
 /// First token only — full field rewrite.
-pub fn apply_full_rewrite(preview: &str) -> Result<(), String> {
+fn apply_full_rewrite(sock: &PathBuf, target: &str, preview: &str) -> Result<(), String> {
+    verify_focus(target)?;
     set_clipboard_fast(preview)?;
-    select_all_clear()?;
-    insert_text(preview)
+    select_all_clear(sock, target)?;
+    insert_text(sock, target, preview)
 }
 
 /// After Space commit — only touch the trailing preview segment.
-pub fn apply_segment(
+fn apply_segment(
+    sock: &PathBuf,
+    target: &str,
     preview: &str,
     on_screen: Option<&str>,
     erase_hint: usize,
@@ -300,20 +373,22 @@ pub fn apply_segment(
         "[composer-write] segment erase={} (watchdog={:?} hint={}) → {:?}",
         erase, on_screen, erase_hint, preview
     );
-    erase_trailing_chars(erase)?;
-    insert_text(preview)
+    erase_trailing_chars(sock, target, erase)?;
+    insert_text(sock, target, preview)
 }
 
 fn apply_once(
+    sock: &PathBuf,
+    target: &str,
     locked_empty: bool,
     preview: &str,
     on_screen: Option<String>,
     erase_hint: usize,
 ) -> Result<(), String> {
     if locked_empty {
-        apply_full_rewrite(preview)
+        apply_full_rewrite(sock, target, preview)
     } else {
-        apply_segment(preview, on_screen.as_deref(), erase_hint)
+        apply_segment(sock, target, preview, on_screen.as_deref(), erase_hint)
     }
 }
 
@@ -328,6 +403,18 @@ pub async fn writer_loop(writer: Arc<FieldWriter>) {
             tokio::time::sleep(Duration::from_millis(15)).await;
             let req = writer.take_desired().await.unwrap_or(req);
 
+            let target = match writer.capture_or_get_target().await {
+                Ok(t) => t,
+                Err(e) => {
+                    eprintln!("[composer-write] {e}");
+                    notify_focus_abort(
+                        "Could not lock target window — focus a text field and double-tap again.",
+                    );
+                    writer.reset().await;
+                    break;
+                }
+            };
+
             let gen = req.gen;
             let erase_hint = req.erase_hint;
             let (locked, on_screen) = writer.snapshot().await;
@@ -335,9 +422,18 @@ pub async fn writer_loop(writer: Arc<FieldWriter>) {
             let preview = req.text.clone();
             let mode = if locked_empty { "full" } else { "segment" };
             let on_screen_clone = on_screen.clone();
+            let sock = writer.ydotool_socket();
+            let target_clone = target.clone();
             let started = std::time::Instant::now();
             let result = tokio::task::spawn_blocking(move || {
-                apply_once(locked_empty, &preview, on_screen_clone, erase_hint)
+                apply_once(
+                    &sock,
+                    &target_clone,
+                    locked_empty,
+                    &preview,
+                    on_screen_clone,
+                    erase_hint,
+                )
             })
             .await
             .map_err(|e| e.to_string());
@@ -355,6 +451,13 @@ pub async fn writer_loop(writer: Arc<FieldWriter>) {
                 }
                 Ok(Err(e)) | Err(e) => {
                     eprintln!("[composer-write] failed: {e}");
+                    if e.starts_with("focus:") {
+                        notify_focus_abort(
+                            "Focus left the target window — composition aborted. Reset or double-tap to restart.",
+                        );
+                        writer.reset().await;
+                        break;
+                    }
                 }
             }
             if writer.state.lock().await.desired.is_some() {
@@ -427,5 +530,12 @@ mod tests {
         let (locked, on_screen) = w.snapshot().await;
         assert!(locked.is_empty());
         assert!(on_screen.is_none());
+        assert!(w.state.lock().await.target_window.is_none());
+    }
+
+    #[test]
+    fn focus_mismatch_error_is_prefixed() {
+        let err = verify_focus("kwin:99999999").unwrap_err();
+        assert!(err.starts_with("focus:"), "{err}");
     }
 }
