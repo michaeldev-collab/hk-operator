@@ -63,7 +63,7 @@
       <div class="pad-head">
         <div>
           <h2>Slash composer · ai</h2>
-          <p class="sub">Bind an action of type <code>composer</code> (value <code>ai</code>) to a pad slot. Each press pastes the next token.</p>
+          <p class="sub">Bind <code>composer</code> (value <code>ai</code>) to a pad key. <strong>Double-tap</strong> starts/rotates; <kbd>Space</kbd> commits; double-tap again stacks the next command.</p>
         </div>
         <div class="pad-actions">
           <button id="composerResetBtn" class="btn" type="button">Reset cycle</button>
@@ -74,10 +74,9 @@
         <textarea id="composerCommands" rows="4" spellcheck="false"></textarea>
       </label>
       <div class="composer-row">
-        <label>Timeout ms<input id="composerTimeout" type="number" min="500" step="100" /></label>
         <label>Separator<input id="composerSeparator" maxlength="8" /></label>
       </div>
-      <p class="pad-hint">Idle timeout resets to the first command. Enter-key reset is not hooked yet.</p>
+      <p class="pad-hint">Quick double-tap = start or rotate. Space locks (Cursor chip stays). Double-tap stacks the next command. New loop is <strong>Reset cycle</strong> or a <code>composer-reset</code> pad action — no Esc, no idle timeout.</p>
     </section>
 
     <section id="gitSyncPanel" class="pad-panel composer-panel">

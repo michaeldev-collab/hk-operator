@@ -31,6 +31,11 @@ npm run dev          # Tauri + UI
 Persistence: `~/.config/hk-operator/store.json`
 (actions + `padBindings` + `composers` + `allowedCommands`).
 
+**Slash composer:** bind type `composer` (value `ai`) to a pad key. **Double-tap**
+starts or rotates the live slash; **Space** commits; double-tap again stacks the
+next command. New loop = UI **Reset cycle** or a `composer-reset` action (no idle
+timeout, Esc left alone for Cursor).
+
 **Commands never run silently** — click **Allow shell** (or confirm on first Run).
 
 ## Probe CLI (no flash)

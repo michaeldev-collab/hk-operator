@@ -10,15 +10,25 @@ export const CATEGORIES = [
   "Client/Admin Tools",
 ];
 
-export const ACTION_TYPES = ["url", "command", "prompt", "path", "note", "composer"];
+export const ACTION_TYPES = [
+  "url",
+  "command",
+  "prompt",
+  "path",
+  "note",
+  "composer",
+  "composer-commit",
+  "composer-reset",
+];
 
 export function defaultComposers() {
   return {
     ai: {
+      // Public portfolio defaults — no private board slash names.
       commands: ["/help", "/review", "/plan"],
       separator: " ",
-      timeoutMs: 4000,
-      resetOn: ["timeout", "explicitClear"],
+      timeoutMs: 60000,
+      resetOn: ["space", "explicitClear"], // no idle timeout — Reset only
     },
   };
 }
@@ -32,11 +42,14 @@ export function normalizeComposers(raw) {
     const commands = Array.isArray(cfg.commands)
       ? cfg.commands.map((c) => String(c).trim()).filter(Boolean)
       : base.ai.commands;
+    const resetOn = Array.isArray(cfg.resetOn)
+      ? cfg.resetOn.map(String).filter((x) => x !== "timeout")
+      : ["space", "explicitClear"];
     out[id] = {
       commands: commands.length ? commands : ["/help"],
       separator: String(cfg.separator ?? " "),
-      timeoutMs: Math.max(500, Number(cfg.timeoutMs) || 4000),
-      resetOn: Array.isArray(cfg.resetOn) ? cfg.resetOn.map(String) : ["timeout", "explicitClear"],
+      timeoutMs: Math.max(5000, Number(cfg.timeoutMs) || 60000),
+      resetOn: resetOn.length ? resetOn : ["space", "explicitClear"],
     };
   }
   return out;

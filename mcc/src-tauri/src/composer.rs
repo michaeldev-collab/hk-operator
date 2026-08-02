@@ -1,4 +1,8 @@
-//! Pure composer rotation / lock / stack logic (no clipboard or ydotool).
+//! Composer rotation / space-commit / stack logic (no clipboard or ydotool).
+//!
+//! Pad **double-tap** = start or rotate the current preview token.
+//! Single tap is ignored (avoids accidental stack/rotate on slow presses).
+//! Spacebar (host key) = commit; next double-tap starts the next stacked pick.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -8,12 +12,18 @@ pub fn default_separator() -> String {
     " ".into()
 }
 
+/// Kept for store/UI compat — idle abandon is disabled (B4 clears sessions).
 pub fn default_timeout_ms() -> u64 {
-    4000
+    60_000
+}
+
+/// Max gap between two pad presses to count as one double-tap.
+pub fn default_double_tap_ms() -> u64 {
+    400
 }
 
 pub fn default_reset_on() -> Vec<String> {
-    vec!["timeout".into(), "explicitClear".into()]
+    vec!["explicitClear".into(), "space".into()]
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,6 +32,7 @@ pub struct ComposerConfig {
     pub commands: Vec<String>,
     #[serde(default = "default_separator")]
     pub separator: String,
+    /// Legacy field (ignored). New loop is explicit: P3 B4 / composer-reset.
     #[serde(default = "default_timeout_ms")]
     pub timeout_ms: u64,
     #[serde(default = "default_reset_on")]
@@ -31,7 +42,6 @@ pub struct ComposerConfig {
 impl Default for ComposerConfig {
     fn default() -> Self {
         Self {
-            // Public portfolio defaults — no private board slash names.
             commands: vec!["/help".into(), "/review".into(), "/plan".into()],
             separator: default_separator(),
             timeout_ms: default_timeout_ms(),
@@ -42,16 +52,14 @@ impl Default for ComposerConfig {
 
 #[derive(Debug, Default)]
 pub struct ComposerRuntime {
-    /// Current preview index while picking
     pub index: HashMap<String, usize>,
-    /// Last press time
     pub last_press: HashMap<String, Instant>,
-    /// Bump to cancel a pending "pause = lock in" timer
-    pub generation: HashMap<String, u64>,
-    /// True while rotating before a pause lock-in
+    /// First tap of a potential double-tap (not yet fired).
+    pub last_tap: HashMap<String, Instant>,
     pub picking: HashMap<String, bool>,
-    /// How many commands locked into this compose session (for separator)
     pub committed: HashMap<String, usize>,
+    /// Preview token currently owned for this composer.
+    pub last_text: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -61,13 +69,19 @@ pub struct ComposerPress {
     pub idx: usize,
     pub len: usize,
     pub timeout_ms: u64,
-    /// Generation to pass to [`try_lock_composer`] after the pause timer.
-    pub generation: u64,
-    /// True when this press replaced a previous preview (caller may undo).
     pub replaced_preview: bool,
+    /// FSM hint: prior preview length when rotating; 0 on a fresh pick.
+    pub erase_chars: usize,
 }
 
-/// Validate composer id + config before mutating runtime.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TapOutcome {
+    /// First tap of a double — do not touch the field.
+    Arming,
+    /// Confirmed double-tap — start or rotate.
+    Fired(ComposerPress),
+}
+
 pub fn composer_precheck(id: &str, cfg: Option<&ComposerConfig>) -> Result<(), String> {
     let id = id.trim();
     if id.is_empty() {
@@ -80,7 +94,30 @@ pub fn composer_precheck(id: &str, cfg: Option<&ComposerConfig>) -> Result<(), S
     Ok(())
 }
 
-/// Apply one composer press. Side-effect free aside from `runtime` mutation.
+/// Pad tap gate: only a quick double-tap runs the composer.
+pub fn note_composer_tap(
+    id: &str,
+    cfg: &ComposerConfig,
+    runtime: &mut ComposerRuntime,
+    now: Instant,
+    double_tap_ms: u64,
+) -> Result<TapOutcome, String> {
+    composer_precheck(id, Some(cfg))?;
+    let id = id.trim();
+    let window = Duration::from_millis(double_tap_ms.clamp(150, 900));
+
+    if let Some(first) = runtime.last_tap.get(id).copied() {
+        if now.duration_since(first) <= window {
+            runtime.last_tap.remove(id);
+            let press = apply_composer_press(id, cfg, runtime, now)?;
+            return Ok(TapOutcome::Fired(press));
+        }
+    }
+
+    runtime.last_tap.insert(id.to_string(), now);
+    Ok(TapOutcome::Arming)
+}
+
 pub fn apply_composer_press(
     id: &str,
     cfg: &ComposerConfig,
@@ -90,19 +127,11 @@ pub fn apply_composer_press(
     composer_precheck(id, Some(cfg))?;
     let id = id.trim();
     let len = cfg.commands.len();
-    let timeout_ms = cfg.timeout_ms.max(500);
-    let timeout = Duration::from_millis(timeout_ms);
-    let was_picking = runtime.picking.get(id).copied().unwrap_or(false);
+    let timeout_ms = cfg.timeout_ms.max(5_000);
+    // No idle abandon — sitting between rotates must not wipe locked chips.
+    // New loop is explicit via composer-reset (P3 B4).
 
-    // Very long idle → fresh compose session
-    if let Some(last) = runtime.last_press.get(id) {
-        if now.duration_since(*last) >= timeout.saturating_mul(3) {
-            runtime.committed.insert(id.to_string(), 0);
-            runtime.picking.insert(id.to_string(), false);
-            runtime.index.insert(id.to_string(), 0);
-        }
-    }
-    let committed = runtime.committed.get(id).copied().unwrap_or(0);
+    let was_picking = runtime.picking.get(id).copied().unwrap_or(false);
 
     let (idx, replaced_preview) = if was_picking {
         let cur = runtime.index.get(id).copied().unwrap_or(0) % len;
@@ -112,18 +141,21 @@ pub fn apply_composer_press(
     };
 
     let token = cfg.commands[idx].clone();
-    let text = if committed > 0 {
-        format!("{}{}", cfg.separator, token)
-    } else {
-        token.clone()
-    };
+    let text = token.clone();
 
+    let erase_chars = if replaced_preview {
+        runtime
+            .last_text
+            .get(id)
+            .map(|t| t.chars().count())
+            .unwrap_or(0)
+    } else {
+        0
+    };
+    runtime.last_text.insert(id.to_string(), text.clone());
     runtime.index.insert(id.to_string(), idx);
     runtime.picking.insert(id.to_string(), true);
     runtime.last_press.insert(id.to_string(), now);
-    let gen = runtime.generation.entry(id.to_string()).or_insert(0);
-    *gen += 1;
-    let generation = *gen;
 
     Ok(ComposerPress {
         text,
@@ -131,34 +163,53 @@ pub fn apply_composer_press(
         idx,
         len,
         timeout_ms,
-        generation,
         replaced_preview,
+        erase_chars,
     })
 }
 
-/// After idle pause: lock current preview if generation still matches.
-/// Returns true when a lock occurred.
-pub fn try_lock_composer(runtime: &mut ComposerRuntime, id: &str, expected_gen: u64) -> bool {
-    if runtime.generation.get(id).copied().unwrap_or(0) == expected_gen
-        && runtime.picking.get(id).copied().unwrap_or(false)
-    {
-        let n = runtime.committed.get(id).copied().unwrap_or(0) + 1;
-        runtime.committed.insert(id.to_string(), n);
-        runtime.picking.insert(id.to_string(), false);
-        runtime.index.insert(id.to_string(), 0);
-        true
-    } else {
-        false
+/// Spacebar (or explicit commit): keep the current preview; next double-tap stacks.
+pub fn commit_composer(runtime: &mut ComposerRuntime, id: &str) -> bool {
+    if !runtime.picking.get(id).copied().unwrap_or(false) {
+        return false;
     }
+    let n = runtime.committed.get(id).copied().unwrap_or(0) + 1;
+    runtime.committed.insert(id.to_string(), n);
+    runtime.picking.insert(id.to_string(), false);
+    runtime.index.insert(id.to_string(), 0);
+    runtime.last_text.remove(id);
+    runtime.last_tap.remove(id);
+    true
+}
+
+pub fn commit_all_picking(runtime: &mut ComposerRuntime) -> Vec<String> {
+    let ids: Vec<String> = runtime
+        .picking
+        .iter()
+        .filter(|(_, v)| **v)
+        .map(|(k, _)| k.clone())
+        .collect();
+    let mut committed = Vec::new();
+    for id in ids {
+        if commit_composer(runtime, &id) {
+            committed.push(id);
+        }
+    }
+    committed
+}
+
+pub fn any_picking(runtime: &ComposerRuntime) -> bool {
+    runtime.picking.values().any(|v| *v)
 }
 
 pub fn reset_composer_runtime(runtime: &mut ComposerRuntime, composer_id: Option<&str>) {
     if let Some(id) = composer_id {
         runtime.index.remove(id);
         runtime.last_press.remove(id);
-        runtime.generation.remove(id);
+        runtime.last_tap.remove(id);
         runtime.picking.remove(id);
         runtime.committed.remove(id);
+        runtime.last_text.remove(id);
     } else {
         *runtime = ComposerRuntime::default();
     }
@@ -168,121 +219,112 @@ pub fn reset_composer_runtime(runtime: &mut ComposerRuntime, composer_id: Option
 mod tests {
     use super::*;
 
-    fn cfg(commands: &[&str], timeout_ms: u64) -> ComposerConfig {
+    fn cfg(commands: &[&str]) -> ComposerConfig {
         ComposerConfig {
             commands: commands.iter().map(|s| (*s).to_string()).collect(),
             separator: " ".into(),
-            timeout_ms,
+            timeout_ms: 60_000,
             reset_on: default_reset_on(),
         }
     }
 
     #[test]
-    fn first_press_starts_at_index_zero_without_separator() {
+    fn single_tap_arms_without_firing() {
         let mut rt = ComposerRuntime::default();
-        let c = cfg(&["/help", "/review", "/plan"], 4000);
-        let now = Instant::now();
-        let press = apply_composer_press("ai", &c, &mut rt, now).unwrap();
-        assert_eq!(press.token, "/help");
-        assert_eq!(press.text, "/help");
-        assert_eq!(press.idx, 0);
-        assert!(!press.replaced_preview);
-        assert!(rt.picking.get("ai").copied().unwrap_or(false));
+        let c = cfg(&["/a", "/b"]);
+        let t0 = Instant::now();
+        let out = note_composer_tap("ai", &c, &mut rt, t0, 400).unwrap();
+        assert_eq!(out, TapOutcome::Arming);
+        assert!(!rt.picking.get("ai").copied().unwrap_or(false));
     }
 
     #[test]
-    fn second_press_while_picking_rotates() {
+    fn double_tap_starts_then_rotates() {
         let mut rt = ComposerRuntime::default();
-        let c = cfg(&["/help", "/review", "/plan"], 4000);
+        let c = cfg(&["/a", "/b", "/c"]);
+        let t0 = Instant::now();
+        assert!(matches!(
+            note_composer_tap("ai", &c, &mut rt, t0, 400).unwrap(),
+            TapOutcome::Arming
+        ));
+        let TapOutcome::Fired(p1) =
+            note_composer_tap("ai", &c, &mut rt, t0 + Duration::from_millis(120), 400).unwrap()
+        else {
+            panic!("expected fire");
+        };
+        assert_eq!(p1.text, "/a");
+
+        assert!(matches!(
+            note_composer_tap("ai", &c, &mut rt, t0 + Duration::from_millis(200), 400).unwrap(),
+            TapOutcome::Arming
+        ));
+        let TapOutcome::Fired(p2) =
+            note_composer_tap("ai", &c, &mut rt, t0 + Duration::from_millis(320), 400).unwrap()
+        else {
+            panic!("expected fire");
+        };
+        assert_eq!(p2.text, "/b");
+        assert!(p2.replaced_preview);
+    }
+
+    #[test]
+    fn slow_second_tap_is_new_arm_not_rotate() {
+        let mut rt = ComposerRuntime::default();
+        let c = cfg(&["/a", "/b"]);
+        let t0 = Instant::now();
+        note_composer_tap("ai", &c, &mut rt, t0, 400).unwrap();
+        let out = note_composer_tap("ai", &c, &mut rt, t0 + Duration::from_millis(500), 400).unwrap();
+        assert_eq!(out, TapOutcome::Arming);
+        assert!(!rt.picking.get("ai").copied().unwrap_or(false));
+    }
+
+    #[test]
+    fn space_then_double_tap_stacks() {
+        let mut rt = ComposerRuntime::default();
+        let c = cfg(&["/a", "/b"]);
+        let t0 = Instant::now();
+        note_composer_tap("ai", &c, &mut rt, t0, 400).unwrap();
+        let TapOutcome::Fired(_) =
+            note_composer_tap("ai", &c, &mut rt, t0 + Duration::from_millis(100), 400).unwrap()
+        else {
+            panic!("fire");
+        };
+        assert!(commit_composer(&mut rt, "ai"));
+
+        note_composer_tap("ai", &c, &mut rt, t0 + Duration::from_millis(200), 400).unwrap();
+        let TapOutcome::Fired(p) =
+            note_composer_tap("ai", &c, &mut rt, t0 + Duration::from_millis(300), 400).unwrap()
+        else {
+            panic!("fire");
+        };
+        assert_eq!(p.text, "/a");
+        assert!(!p.replaced_preview);
+    }
+
+    #[test]
+    fn apply_composer_press_still_rotates_directly() {
+        let mut rt = ComposerRuntime::default();
+        let c = cfg(&["/a", "/b", "/c"]);
+        let t0 = Instant::now();
+        let p1 = apply_composer_press("ai", &c, &mut rt, t0).unwrap();
+        assert_eq!(p1.text, "/a");
+        let p2 = apply_composer_press("ai", &c, &mut rt, t0 + Duration::from_secs(2)).unwrap();
+        assert_eq!(p2.text, "/b");
+    }
+
+    #[test]
+    fn long_idle_does_not_reset_session() {
+        let mut rt = ComposerRuntime::default();
+        let mut c = cfg(&["/a", "/b"]);
+        c.timeout_ms = 5_000;
         let t0 = Instant::now();
         apply_composer_press("ai", &c, &mut rt, t0).unwrap();
-        let press = apply_composer_press("ai", &c, &mut rt, t0 + Duration::from_millis(10)).unwrap();
-        assert_eq!(press.token, "/review");
-        assert_eq!(press.idx, 1);
-        assert!(press.replaced_preview);
-    }
-
-    #[test]
-    fn wrap_from_last_to_first() {
-        let mut rt = ComposerRuntime::default();
-        let c = cfg(&["/a", "/b"], 1000);
-        let t0 = Instant::now();
-        apply_composer_press("ai", &c, &mut rt, t0).unwrap(); // /a
-        apply_composer_press("ai", &c, &mut rt, t0).unwrap(); // /b
-        let press = apply_composer_press("ai", &c, &mut rt, t0).unwrap(); // wrap
-        assert_eq!(press.token, "/a");
-        assert_eq!(press.idx, 0);
-    }
-
-    #[test]
-    fn lock_then_stack_prepends_separator() {
-        let mut rt = ComposerRuntime::default();
-        let c = cfg(&["/help", "/review"], 500);
-        let t0 = Instant::now();
-        let p1 = apply_composer_press("ai", &c, &mut rt, t0).unwrap();
-        assert!(try_lock_composer(&mut rt, "ai", p1.generation));
-        assert_eq!(rt.committed.get("ai").copied(), Some(1));
-        assert!(!rt.picking.get("ai").copied().unwrap_or(true));
-
-        let p2 = apply_composer_press("ai", &c, &mut rt, t0 + Duration::from_millis(10)).unwrap();
-        assert_eq!(p2.text, " /help");
-        assert_eq!(p2.token, "/help");
-    }
-
-    #[test]
-    fn stale_generation_does_not_lock() {
-        let mut rt = ComposerRuntime::default();
-        let c = cfg(&["/help"], 500);
-        let t0 = Instant::now();
-        let p1 = apply_composer_press("ai", &c, &mut rt, t0).unwrap();
-        let _p2 = apply_composer_press("ai", &c, &mut rt, t0).unwrap();
-        assert!(!try_lock_composer(&mut rt, "ai", p1.generation));
-    }
-
-    #[test]
-    fn long_idle_resets_committed_session() {
-        let mut rt = ComposerRuntime::default();
-        let c = cfg(&["/help", "/review"], 500);
-        let t0 = Instant::now();
-        let p1 = apply_composer_press("ai", &c, &mut rt, t0).unwrap();
-        assert!(try_lock_composer(&mut rt, "ai", p1.generation));
-        // 3 × timeout = 1500ms
-        let later = t0 + Duration::from_millis(1500);
-        let press = apply_composer_press("ai", &c, &mut rt, later).unwrap();
-        assert_eq!(press.text, "/help"); // no separator — session reset
-        assert_eq!(rt.committed.get("ai").copied().unwrap_or(0), 0);
-    }
-
-    #[test]
-    fn timeout_ms_floored_at_500() {
-        let mut rt = ComposerRuntime::default();
-        let c = cfg(&["/help"], 100);
-        let press = apply_composer_press("ai", &c, &mut rt, Instant::now()).unwrap();
-        assert_eq!(press.timeout_ms, 500);
-    }
-
-    #[test]
-    fn empty_id_and_unknown_composer_err() {
-        let c = cfg(&["/help"], 4000);
-        assert!(composer_precheck("  ", Some(&c)).is_err());
-        assert!(composer_precheck("ai", None).is_err());
-        let empty = ComposerConfig {
-            commands: vec![],
-            ..ComposerConfig::default()
-        };
-        assert!(composer_precheck("ai", Some(&empty)).is_err());
-    }
-
-    #[test]
-    fn reset_clears_one_or_all() {
-        let mut rt = ComposerRuntime::default();
-        let c = cfg(&["/help"], 500);
-        apply_composer_press("ai", &c, &mut rt, Instant::now()).unwrap();
-        apply_composer_press("other", &c, &mut rt, Instant::now()).unwrap();
-        reset_composer_runtime(&mut rt, Some("ai"));
-        assert!(!rt.picking.contains_key("ai"));
-        assert!(rt.picking.contains_key("other"));
-        reset_composer_runtime(&mut rt, None);
-        assert!(rt.picking.is_empty());
+        assert!(commit_composer(&mut rt, "ai"));
+        // Stack after a long pause — must still be a fresh pick after commit,
+        // not a wiped writer session from idle abandon.
+        let p = apply_composer_press("ai", &c, &mut rt, t0 + Duration::from_secs(120)).unwrap();
+        assert!(!p.replaced_preview);
+        assert_eq!(p.text, "/a");
+        assert!(rt.picking.get("ai").copied().unwrap_or(false));
     }
 }

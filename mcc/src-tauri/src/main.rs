@@ -3,17 +3,20 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod composer;
+mod composer_write;
 mod dispatch;
 mod fire_api;
 mod git_sync;
 mod profile_apply;
 mod profile_path;
+mod space_listen;
 mod ydotool_sock;
 
 use composer::{
-    apply_composer_press, reset_composer_runtime, try_lock_composer, ComposerConfig,
-    ComposerRuntime,
+    commit_composer, default_double_tap_ms, note_composer_tap, reset_composer_runtime,
+    ComposerConfig, ComposerRuntime, TapOutcome,
 };
+use composer_write::FieldWriter;
 use cyberdeck_ble::{
     CyberdeckPad, HotkeySlot, MacroEvent, PadSlots, PadStatus, MODE_HID, MODE_MACRO,
 };
@@ -121,7 +124,8 @@ struct AppState {
     store_path: PathBuf,
     store: Mutex<Store>,
     listen_stop: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
-    composer: Mutex<ComposerRuntime>,
+    composer: Arc<Mutex<ComposerRuntime>>,
+    field_writer: Arc<FieldWriter>,
     /// Localhost `/fire/*` bearer token (also written under config dir).
     fire_token: String,
 }
@@ -349,23 +353,6 @@ fn auto_paste() -> Result<(), String> {
     Ok(())
 }
 
-/// Undo last edit in the focused window (Ctrl+Z via ydotool).
-fn auto_undo() -> Result<(), String> {
-    ensure_ydotoold();
-    let sock = ydotoold_socket();
-    std::thread::sleep(std::time::Duration::from_millis(40));
-    // KEY_LEFTCTRL=29, KEY_Z=44
-    let status = Command::new("ydotool")
-        .env("YDOTOOL_SOCKET", &sock)
-        .args(["key", "--key-delay=12", "29:1", "44:1", "44:0", "29:0"])
-        .status()
-        .map_err(|e| format!("ydotool undo failed to start: {e}"))?;
-    if !status.success() {
-        return Err(format!("ydotool undo exited {status}"));
-    }
-    Ok(())
-}
-
 fn paste_text(text: &str, label: &str) -> Result<String, String> {
     // Prefer KDE Klipper on this host — arboard alone often writes a
     // clipboard backend with no wl-clipboard/xclip installed.
@@ -418,9 +405,7 @@ async fn execute_action(
         }
         "prompt" | "note" => paste_text(&action.value, &action.name),
         "composer" => {
-            // Live-rotate: rapid presses replace the preview (undo + paste next).
-            // Pause ≥ timeoutMs locks the current slash into the prompt; next
-            // burst picks the following command to stack.
+            // Double-tap = start/rotate. Space commits. Next double-tap stacks.
             let id = action.value.trim();
             composer::composer_precheck(id, store.composers.get(id))?;
             let cfg = store
@@ -429,43 +414,76 @@ async fn execute_action(
                 .cloned()
                 .expect("composer_precheck verified composer exists");
             let now = std::time::Instant::now();
-            let press = apply_composer_press(id, &cfg, runtime, now)?;
-            if press.replaced_preview {
-                if let Err(e) = auto_undo() {
-                    eprintln!("[mcc] composer undo failed: {e}");
+            match note_composer_tap(id, &cfg, runtime, now, default_double_tap_ms())? {
+                TapOutcome::Arming => {
+                    eprintln!("[composer] arming double-tap for {id}");
+                    Ok(format!("{} — tap again quickly to rotate", action.name))
                 }
-            }
+                TapOutcome::Fired(press) => {
+                    eprintln!(
+                        "[composer] double-tap idx={} token={} rotate={}",
+                        press.idx, press.token, press.replaced_preview
+                    );
 
-            let timeout = std::time::Duration::from_millis(press.timeout_ms);
-            let id_owned = id.to_string();
-            let my_gen = press.generation;
-            let st = state.clone();
-            tauri::async_runtime::spawn(async move {
-                tokio::time::sleep(timeout).await;
-                let mut rt = st.composer.lock().await;
-                if try_lock_composer(&mut rt, &id_owned, my_gen) {
                     let _ = Command::new("notify-send")
                         .args([
                             "-a",
                             "MCC Pad",
-                            "composer locked",
-                            "Paused — current slash kept. Press again to pick the next.",
+                            &format!("{} ({}/{})", press.token, press.idx + 1, press.len),
+                            "Double-tap rotates · Space commits · Reset for new loop",
                         ])
                         .status();
-                }
-            });
 
-            paste_text(
-                &press.text,
-                &format!(
-                    "{} rotate [{}] ({}/{}) — pause {}ms to lock",
-                    action.name,
-                    press.token,
-                    press.idx + 1,
-                    press.len,
-                    press.timeout_ms
-                ),
-            )
+                    {
+                        let fw = state.field_writer.clone();
+                        let text = press.text.clone();
+                        let erase = press.erase_chars;
+                        tauri::async_runtime::spawn(async move {
+                            fw.request(text, erase).await;
+                        });
+                    }
+
+                    Ok(format!(
+                        "{} [{}] ({}/{}) — Space to commit",
+                        action.name,
+                        press.token,
+                        press.idx + 1,
+                        press.len
+                    ))
+                }
+            }
+        }
+        "composer-commit" => {
+            let id = action.value.trim();
+            composer::composer_precheck(id, store.composers.get(id))?;
+            if commit_composer(runtime, id) {
+                let fw = state.field_writer.clone();
+                tauri::async_runtime::spawn(async move {
+                    fw.clear_preview().await;
+                });
+                Ok(format!("{} committed — double-tap to stack next", action.name))
+            } else {
+                Ok(format!("{} — nothing to commit", action.name))
+            }
+        }
+        "composer-reset" => {
+            let id = action.value.trim();
+            if id.is_empty() {
+                reset_composer_runtime(runtime, None);
+            } else {
+                composer::composer_precheck(id, store.composers.get(id))?;
+                reset_composer_runtime(runtime, Some(id));
+            }
+            state.field_writer.reset().await;
+            let _ = Command::new("notify-send")
+                .args([
+                    "-a",
+                    "MCC Pad",
+                    "composer new loop",
+                    "Session cleared — next double-tap starts fresh.",
+                ])
+                .status();
+            Ok(format!("{} — new loop ready", action.name))
         }
         "command" => {
             command_gate(
@@ -544,6 +562,8 @@ async fn reset_composer(
 ) -> Result<(), String> {
     let mut runtime = state.composer.lock().await;
     reset_composer_runtime(&mut runtime, composer_id.as_deref());
+    drop(runtime);
+    state.field_writer.reset().await;
     Ok(())
 }
 
@@ -636,6 +656,8 @@ async fn import_profile(
     // Reset composer cycle after profile load
     let mut runtime = state.composer.lock().await;
     *runtime = ComposerRuntime::default();
+    drop(runtime);
+    state.field_writer.reset().await;
     let settings_path = state
         .store_path
         .parent()
@@ -785,6 +807,8 @@ async fn git_sync_pull_apply(
     drop(store);
     let mut runtime = state.composer.lock().await;
     *runtime = ComposerRuntime::default();
+    drop(runtime);
+    state.field_writer.reset().await;
     let mut settings = git_sync::load_settings(&dir);
     let clean_name = git_sync::sanitize_profile_name(&name)?;
     settings.active_profile.replace(clean_name.clone());
@@ -1027,7 +1051,8 @@ fn main() {
         store_path,
         store: Mutex::new(store),
         listen_stop: Mutex::new(None),
-        composer: Mutex::new(ComposerRuntime::default()),
+        composer: Arc::new(Mutex::new(ComposerRuntime::default())),
+        field_writer: Arc::new(FieldWriter::new()),
         fire_token: fire_token.clone(),
     });
 
@@ -1039,6 +1064,16 @@ fn main() {
             spawn_localhost_fire_api(handle.clone(), state.clone());
             install_kde_fire_shortcuts(&fire_token);
             ensure_ydotoold();
+            {
+                let writer = state.field_writer.clone();
+                tauri::async_runtime::spawn(async move {
+                    composer_write::writer_loop(writer).await;
+                });
+            }
+            space_listen::spawn_space_listener(
+                state.composer.clone(),
+                state.field_writer.clone(),
+            );
             // Also keep BLE notify listen as secondary (works after firmware fix).
             let st = state.clone();
             let h2 = handle.clone();
@@ -1051,6 +1086,7 @@ fn main() {
             get_store,
             save_store,
             pad_status,
+            pad_set_bluez_enabled,
             pad_read_slots,
             pad_write_slots,
             allow_command,

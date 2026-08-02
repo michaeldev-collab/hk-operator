@@ -378,6 +378,8 @@ function valuePlaceholder(type) {
       path: "~/projects/…",
       note: "free text…",
       composer: "ai",
+      "composer-commit": "ai",
+      "composer-reset": "ai",
     }[type] || ""
   );
 }
@@ -1034,11 +1036,9 @@ function importJson(file) {
 function renderComposerPanel() {
   const cfg = normalizeComposers(state.composers).ai || defaultComposers().ai;
   const ta = $("#composerCommands");
-  const timeout = $("#composerTimeout");
   const sep = $("#composerSeparator");
-  if (!ta || !timeout || !sep) return;
+  if (!ta || !sep) return;
   if (document.activeElement !== ta) ta.value = (cfg.commands || []).join("\n");
-  if (document.activeElement !== timeout) timeout.value = String(cfg.timeoutMs || 4000);
   if (document.activeElement !== sep) sep.value = cfg.separator ?? " ";
 }
 
@@ -1047,11 +1047,16 @@ function applyComposerPanel() {
     .split("\n")
     .map((l) => l.trim())
     .filter(Boolean);
-  const timeoutMs = Math.max(500, Number($("#composerTimeout").value) || 4000);
+  const prev = normalizeComposers(state.composers).ai || defaultComposers().ai;
   const separator = String($("#composerSeparator").value ?? " ");
   state.composers = normalizeComposers({
     ...state.composers,
-    ai: { commands, timeoutMs, separator, resetOn: ["timeout", "explicitClear"] },
+    ai: {
+      commands,
+      timeoutMs: prev.timeoutMs || 60000,
+      separator,
+      resetOn: ["space", "explicitClear"],
+    },
   });
   save();
   toast("Composer saved");

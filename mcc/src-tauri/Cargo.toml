@@ -20,6 +20,8 @@ anyhow = { workspace = true }
 dirs = "6"
 open = "5"
 arboard = "3"
+evdev = "0.12"
+libc = "0.2"
 
 [features]
 default = ["custom-protocol"]

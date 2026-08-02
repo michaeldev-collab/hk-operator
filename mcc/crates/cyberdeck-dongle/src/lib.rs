@@ -212,16 +212,37 @@ struct StatusBits {
 
 fn open_serial_acm() -> Result<Box<dyn serialport::SerialPort>, DongleError> {
     let ports = serialport::available_ports().map_err(|e| DongleError::Serial(e.to_string()))?;
+    // Prefer Espressif S3 CDC; other ACM devices (e.g. CH343) speak a different protocol.
+    let mut candidates: Vec<(i32, String)> = Vec::new();
     for p in ports {
         let name = p.port_name;
         if !(name.contains("ttyACM") || name.contains("ttyUSB")) {
             continue;
         }
-        let port = serialport::new(&name, 115_200)
+        let mut score = 0;
+        if let serialport::SerialPortType::UsbPort(info) = &p.port_type {
+            let prod = info.product.as_deref().unwrap_or("");
+            let ser = info.serial_number.as_deref().unwrap_or("");
+            if prod.contains("ESP32S3") || ser.contains(S3_SERIAL_COMPACT) {
+                score = 100;
+            } else if info.vid == VID {
+                score = 50;
+            }
+        }
+        candidates.push((score, name));
+    }
+    candidates.sort_by(|a, b| b.0.cmp(&a.0));
+    for (score, name) in candidates {
+        if score <= 0 {
+            continue;
+        }
+        match serialport::new(&name, 115_200)
             .timeout(Duration::from_millis(200))
             .open()
-            .map_err(|e| DongleError::Serial(e.to_string()))?;
-        return Ok(port);
+        {
+            Ok(port) => return Ok(port),
+            Err(e) => eprintln!("[dongle] skip {name}: {e}"),
+        }
     }
     Err(DongleError::NotFound)
 }
@@ -260,7 +281,7 @@ fn open_usb_cdc() -> Result<UsbCdc, DongleError> {
             break;
         }
     }
-    let (device, mut handle) = found.ok_or(DongleError::NotFound)?;
+    let (device, handle) = found.ok_or(DongleError::NotFound)?;
     let config = device.active_config_descriptor()?;
 
     let mut comm_iface = None;
