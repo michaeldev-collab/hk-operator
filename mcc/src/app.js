@@ -10,6 +10,25 @@ import {
   normalizeComposers,
 } from "./lib.js";
 import { SEED_ACTIONS, SEED_PAD_BINDINGS } from "./seed.js";
+import {
+  STORE_SCHEMA_VERSION,
+  BANK_COUNT,
+  PRESET_COUNT,
+  ACTION_COUNT,
+  SLOT_COUNT,
+  BANKS,
+  emptySlotBank,
+  emptyPadBanks,
+  normalizePadBanks,
+  validPadBanks,
+  bankBindingKey,
+  buildPortablePadState,
+  infoSupportsBanks,
+  migratePadBindings,
+  readPortablePadState,
+  storeReplacementBlocked,
+  truncatePadLabel,
+} from "./pad_banks.js";
 
 const STORAGE_KEY = "3dl.macro.actions.v1";
 const BTN_NAMES = ["B2", "B4", "B5"];
@@ -19,9 +38,6 @@ const BTN_NAMES = ["B2", "B4", "B5"];
  * (KDE → MCC fire API). The UI only edits which MCC action that chord runs.
  * Literal HID editing stays on other presets.
  */
-const PRESET_COUNT = 6;
-const ACTION_COUNT = 3;
-const SLOT_COUNT = PRESET_COUNT * ACTION_COUNT; // 18
 const HOST_BRIDGE_PRESET = 2;
 const BRIDGE_MOD = 0x05; // Ctrl+Alt
 const BRIDGE_KEYS = [0x1e, 0x1f, 0x20]; // HID 1 / 2 / 3
@@ -56,8 +72,8 @@ function presetDisplayName(preset) {
   return state.padPresetNames?.[p] || `Preset ${p + 1}`;
 }
 
-function isHostBridgePreset(preset) {
-  return Number(preset) === HOST_BRIDGE_PRESET;
+function isHostBridgePreset(preset, bank = state.padBank) {
+  return Number(bank) === 0 && Number(preset) === HOST_BRIDGE_PRESET;
 }
 
 function bridgeChordForAction(actionIdx) {
@@ -68,21 +84,36 @@ function bridgeChordForAction(actionIdx) {
   };
 }
 
-/** Force Preset 3 device slots to the Ctrl+Alt bridge chords before sync. */
-function ensureHostBridgeSlots(slots) {
-  if (!slots || slots.length !== SLOT_COUNT) return slots;
+/** Keep the historical KDE bridge in bank 0 only; other banks remain literal/macro. */
+function ensureHostBridgeSlots(banks) {
+  if (!validPadBanks(banks)) return banks;
+  const slots = banks[0];
   for (let a = 0; a < ACTION_COUNT; a++) {
     const i = HOST_BRIDGE_PRESET * ACTION_COUNT + a;
-    const key = `${HOST_BRIDGE_PRESET}-${a}`;
+    const key = bankBindingKey(0, HOST_BRIDGE_PRESET, a);
     const bound = state.actions.find((x) => x.id === state.padBindings[key]);
     const chord = bridgeChordForAction(a);
     const prev = slots[i] || {};
     slots[i] = {
       ...chord,
-      label: (prev.label || (bound ? bound.name : `Ctrl+Alt+${a + 1}`)).slice(0, 23),
+      label: truncatePadLabel(
+        prev.label || (bound ? bound.name : `Ctrl+Alt+${a + 1}`)
+      ),
     };
   }
-  return slots;
+  return banks;
+}
+
+function selectedBankSlots(create = false) {
+  if (!validPadBanks(state.padSlots)) {
+    if (!create) return emptySlotBank();
+    state.padSlots = emptyPadBanks();
+  }
+  return state.padSlots[state.padBank];
+}
+
+function selectedBindingKey(preset, action, bank = state.padBank) {
+  return bankBindingKey(bank, preset, action);
 }
 
 const isTauri = () =>
@@ -102,7 +133,7 @@ function tauriListen(event, handler) {
 
 const state = {
   actions: [],
-  padBindings: {}, // "p-a" -> actionId
+  padBindings: {}, // "bank-preset-action" -> actionId
   padPresetNames: defaultPresetNames(),
   composers: defaultComposers(),
   allowedCommands: new Set(),
@@ -112,12 +143,17 @@ const state = {
   favoritesOnly: false,
   editingId: null,
   // pad
-  padSlots: null, // array of 18 {mode, mod, key, label}
+  padSlots: null, // five arrays of 18 {mode, mod, key, label}
+  padBank: 0,
+  padSupportsBanks: null,
+  padProtocolCompatible: null,
+  padIoBusy: false,
+  storeReplaceBusy: false,
   padAddress: null,
   padTransport: null, // "dongle" | "bluez" | null
   bluezBlocked: null, // true = BlueZ parked (dongle-friendly)
   padListening: false,
-  editingSlot: null, // {preset, action}
+  editingSlot: null, // {bank, preset, action}
 };
 
 function dedupeById(actions) {
@@ -147,14 +183,11 @@ function browserLoad() {
       if (parsed && Array.isArray(parsed.actions)) {
         return {
           actions: dedupeById(parsed.actions.map((a) => normalizeAction(a))),
-          padBindings: parsed.padBindings || {},
+          padBindings: migratePadBindings(parsed.padBindings),
           padPresetNames: normalizePresetNames(parsed.padPresetNames),
           composers: normalizeComposers(parsed.composers),
           allowedCommands: new Set(parsed.allowedCommands || []),
-          padSlots:
-            Array.isArray(parsed.padSlots) && parsed.padSlots.length === SLOT_COUNT
-              ? parsed.padSlots
-              : null,
+          padSlots: normalizePadBanks(parsed.padSlots),
         };
       }
     }
@@ -162,7 +195,7 @@ function browserLoad() {
     console.warn("load failed, reseeding", e);
   }
   const seeded = SEED_ACTIONS.map((a) => normalizeAction(a));
-  const padBindings = { ...SEED_PAD_BINDINGS };
+  const padBindings = migratePadBindings(SEED_PAD_BINDINGS);
   // Remap seed binding ids to actual seeded action ids by stable name.
   const byName = Object.fromEntries(seeded.map((a) => [a.name, a.id]));
   const remapped = {};
@@ -172,6 +205,7 @@ function browserLoad() {
   const padPresetNames = defaultPresetNames();
   const composers = defaultComposers();
   const store = {
+    schemaVersion: STORE_SCHEMA_VERSION,
     actions: seeded,
     padBindings: remapped,
     padPresetNames,
@@ -190,19 +224,17 @@ function browserLoad() {
   };
 }
 
-function browserSave() {
+function browserSave(snapshot) {
   localStorage.setItem(
     STORAGE_KEY,
     JSON.stringify({
-      actions: state.actions,
-      padBindings: state.padBindings,
-      padPresetNames: normalizePresetNames(state.padPresetNames),
-      composers: normalizeComposers(state.composers),
-      allowedCommands: [...state.allowedCommands],
-      padSlots:
-        state.padSlots && state.padSlots.length === SLOT_COUNT
-          ? state.padSlots
-          : null,
+      actions: snapshot.actions,
+      schemaVersion: STORE_SCHEMA_VERSION,
+      padBindings: snapshot.padBindings,
+      padPresetNames: snapshot.padPresetNames,
+      composers: snapshot.composers,
+      allowedCommands: [...snapshot.allowedCommands],
+      padSlots: snapshot.padSlots,
     })
   );
 }
@@ -210,20 +242,17 @@ function browserSave() {
 async function desktopLoad() {
   const store = await tauriInvoke("get_store");
   let actions = Array.isArray(store.actions) ? store.actions.map(fromRustAction) : [];
-  let padBindings = store.padBindings || {};
+  let padBindings = migratePadBindings(store.padBindings);
   let padPresetNames = normalizePresetNames(store.padPresetNames);
   let composers = normalizeComposers(store.composers);
   let allowedCommands = new Set(store.allowedCommands || []);
-  let padSlots =
-    Array.isArray(store.padSlots) && store.padSlots.length === SLOT_COUNT
-      ? store.padSlots
-      : null;
+  let padSlots = normalizePadBanks(store.padSlots);
 
   if (actions.length === 0) {
     actions = SEED_ACTIONS.map((a) => normalizeAction(a));
     const byName = Object.fromEntries(actions.map((a) => [a.name, a.id]));
     padBindings = {};
-    for (const [k, nameOrId] of Object.entries(SEED_PAD_BINDINGS)) {
+    for (const [k, nameOrId] of Object.entries(migratePadBindings(SEED_PAD_BINDINGS))) {
       padBindings[k] = byName[nameOrId] || nameOrId;
     }
     padPresetNames = defaultPresetNames();
@@ -280,20 +309,79 @@ async function desktopSave(
 ) {
   await tauriInvoke("save_store", {
     store: {
+      schemaVersion: STORE_SCHEMA_VERSION,
       actions: actions.map(toRustAction),
-      padBindings,
+      padBindings: migratePadBindings(padBindings),
       padPresetNames: normalizePresetNames(padPresetNames),
       composers: normalizeComposers(composers),
       allowedCommands: [...allowed],
-      padSlots:
-        padSlots && padSlots.length === SLOT_COUNT ? padSlots : null,
+      padSlots: validPadBanks(padSlots) ? padSlots : null,
     },
   });
 }
 
-async function save() {
-  if (isTauri()) await desktopSave();
-  else browserSave();
+function captureSaveSnapshot() {
+  return {
+    actions: state.actions.map((action) => ({
+      ...action,
+      tags: [...(action.tags || [])],
+    })),
+    padBindings: { ...migratePadBindings(state.padBindings) },
+    allowedCommands: new Set(state.allowedCommands),
+    padPresetNames: [...normalizePresetNames(state.padPresetNames)],
+    composers: structuredClone(normalizeComposers(state.composers)),
+    padSlots: validPadBanks(state.padSlots)
+      ? state.padSlots.map((bank) => bank.map((slot) => ({ ...slot })))
+      : null,
+  };
+}
+
+let saveTail = Promise.resolve();
+
+function persistSaveSnapshot(snapshot) {
+  return isTauri()
+    ? desktopSave(
+        snapshot.actions,
+        snapshot.padBindings,
+        snapshot.allowedCommands,
+        snapshot.padPresetNames,
+        snapshot.composers,
+        snapshot.padSlots
+      )
+    : Promise.resolve(browserSave(snapshot));
+}
+
+function applySaveSnapshot(snapshot) {
+  state.actions = snapshot.actions.map((action) => ({
+    ...action,
+    tags: [...(action.tags || [])],
+  }));
+  state.padBindings = { ...snapshot.padBindings };
+  state.allowedCommands = new Set(snapshot.allowedCommands);
+  state.padPresetNames = [...snapshot.padPresetNames];
+  state.composers = structuredClone(snapshot.composers);
+  state.padSlots = snapshot.padSlots
+    ? snapshot.padSlots.map((bank) => bank.map((slot) => ({ ...slot })))
+    : null;
+}
+
+function save() {
+  if (state.storeReplaceBusy) {
+    // Replacement operations reload the authoritative backend store before
+    // releasing the UI. Dropping incidental saves here prevents an old UI
+    // snapshot from overwriting the imported profile mid-transaction.
+    console.warn("store save skipped while profile replacement is in progress");
+    return Promise.resolve();
+  }
+  // Capture at the mutation boundary, then serialize whole-store writes in the
+  // same order as UI events. Backend locking alone cannot prevent an older
+  // fire-and-forget snapshot from landing after a newer edit.
+  const snapshot = captureSaveSnapshot();
+  const result = saveTail.then(() => persistSaveSnapshot(snapshot));
+  saveTail = result.catch((error) => {
+    console.error("store save failed", error);
+  });
+  return result;
 }
 
 const $ = (sel) => document.querySelector(sel);
@@ -521,10 +609,6 @@ function renderCards() {
   }
 }
 
-function emptySlots() {
-  return Array.from({ length: SLOT_COUNT }, () => ({ mode: 0, mod: 0, key: 0, label: "" }));
-}
-
 /** Build 6 preset columns in JS so desktop cannot stick on a cached 3-column HTML shell. */
 function ensurePadGridStructure() {
   let mount = $("#padGridMount");
@@ -545,7 +629,10 @@ function ensurePadGridStructure() {
   }
 
   const title = panel?.querySelector(".pad-head h2");
-  if (title) title.textContent = `Cyberdeck Pad · ${PRESET_COUNT} presets`;
+  if (title) {
+    const bank = BANKS[state.padBank] || BANKS[0];
+    title.textContent = `Cyberdeck Pad · bank ${state.padBank + 1}/${BANK_COUNT} · ${bank.name}`;
+  }
   const countLine = panel?.querySelector(".pad-preset-count");
   if (countLine) {
     countLine.textContent =
@@ -559,6 +646,11 @@ function ensurePadGridStructure() {
       const input = col.querySelector("input.preset-name");
       if (input && document.activeElement !== input) {
         input.value = presetDisplayName(p);
+      }
+      const ledLine = col.querySelector(".preset-led");
+      if (ledLine) {
+        const bridgeNote = isHostBridgePreset(p, state.padBank) ? " · MCC bridge" : "";
+        ledLine.textContent = `P${p + 1} · ${PRESET_LED[p] || ""}${bridgeNote}`;
       }
     }
     return;
@@ -581,7 +673,7 @@ function ensurePadGridStructure() {
       const col = el("div", { className: "pad-preset" });
       col.setAttribute("data-preset", String(p));
       const led = PRESET_LED[p] || "";
-      const bridgeNote = isHostBridgePreset(p) ? " · MCC bridge" : "";
+      const bridgeNote = isHostBridgePreset(p, state.padBank) ? " · MCC bridge" : "";
       const nameInput = el("input", {
         className: "preset-name",
         type: "text",
@@ -625,9 +717,59 @@ function commitPresetName(preset, raw) {
   toast(`Preset ${p + 1} → ${names[p]}`);
 }
 
+function renderBankSelector() {
+  const select = $("#padBankSelect");
+  if (!select) return;
+  if (select.options.length !== BANK_COUNT) {
+    select.replaceChildren(
+      ...BANKS.map((bank, i) =>
+        el("option", {
+          value: String(i),
+          textContent: `${i + 1} · ${bank.name} · ${bank.color}`,
+        })
+      )
+    );
+  }
+  for (let i = 0; i < select.options.length; i++) {
+    select.options[i].disabled = state.padSupportsBanks === false && i > 0;
+  }
+  select.value = String(state.padBank);
+}
+
+async function selectPadBank(event) {
+  const bank = Number(event?.target?.value);
+  if (!Number.isInteger(bank) || bank < 0 || bank >= BANK_COUNT) return;
+  if (state.padIoBusy) {
+    renderBankSelector();
+    toast("Another pad operation is already in progress");
+    return;
+  }
+  state.padBank = bank;
+  renderBankSelector();
+  renderPadGrid();
+  if (!isTauri()) return;
+  setPadIoBusy(true);
+  try {
+    const slots = await tauriInvoke("pad_read_slots", {
+      address: state.padAddress,
+      bank,
+    });
+    if (!validPadBanks(state.padSlots)) state.padSlots = emptyPadBanks();
+    state.padSlots[bank] = slots;
+    ensureHostBridgeSlots(state.padSlots);
+    await save();
+    renderPadGrid();
+  } catch (e) {
+    toast(`Bank ${bank + 1} selected in UI; device read failed: ${e}`);
+  } finally {
+    setPadIoBusy(false);
+  }
+}
+
 function renderPadGrid() {
+  renderBankSelector();
   ensurePadGridStructure();
-  const slots = state.padSlots || emptySlots();
+  const slots = selectedBankSlots();
   const presets = document.querySelectorAll(".pad-preset[data-preset]");
   for (const col of presets) {
     const p = Number(col.getAttribute("data-preset"));
@@ -636,9 +778,9 @@ function renderPadGrid() {
     list.replaceChildren();
     for (let a = 0; a < ACTION_COUNT; a++) {
       const slot = slots[p * ACTION_COUNT + a] || { mode: 0, mod: 0, key: 0, label: "" };
-      const key = `${p}-${a}`;
+      const key = selectedBindingKey(p, a);
       const bound = state.actions.find((x) => x.id === state.padBindings[key]);
-      const bridge = isHostBridgePreset(p);
+      const bridge = isHostBridgePreset(p, state.padBank);
       const modeMacro = !bridge && Number(slot.mode) === 1;
       const btn = el("button", {
         className:
@@ -672,16 +814,17 @@ function renderPadGrid() {
 }
 
 function openSlotEditor(preset, action) {
-  state.editingSlot = { preset, action };
-  const slots = state.padSlots || emptySlots();
+  const bank = state.padBank;
+  state.editingSlot = { bank, preset, action };
+  const slots = selectedBankSlots();
   const slot = slots[preset * ACTION_COUNT + action] || {
     mode: 0,
     mod: 0,
     key: 0,
     label: "",
   };
-  const bridge = isHostBridgePreset(preset);
-  $("#slotTitle").textContent = `${presetDisplayName(preset)} · ${BTN_NAMES[action]}`;
+  const bridge = isHostBridgePreset(preset, bank);
+  $("#slotTitle").textContent = `${BANKS[bank].name} · ${presetDisplayName(preset)} · ${BTN_NAMES[action]}`;
   $("#s_label").value = slot.label || "";
   $("#s_mode").value = bridge ? "0" : String(slot.mode ?? 0);
   $("#s_mod_ctrl").checked = !!(slot.mod & 1);
@@ -694,7 +837,7 @@ function openSlotEditor(preset, action) {
   for (const a of state.actions) {
     sel.append(el("option", { value: a.id, textContent: `${a.name} [${a.type}]` }));
   }
-  const key = `${preset}-${action}`;
+  const key = selectedBindingKey(preset, action, bank);
   sel.value = state.padBindings[key] || "";
   const modeRow = $("#s_modeRow");
   const bridgeNote = $("#s_bridgeNote");
@@ -710,8 +853,8 @@ function openSlotEditor(preset, action) {
 }
 
 function syncSlotModeFields() {
-  const { preset } = state.editingSlot || {};
-  const bridge = isHostBridgePreset(preset);
+  const { bank, preset } = state.editingSlot || {};
+  const bridge = isHostBridgePreset(preset, bank);
   if (bridge) {
     $("#s_hidFields").hidden = true;
     $("#s_macroFields").hidden = false;
@@ -730,19 +873,35 @@ function parseU8(s) {
 
 function applySlotEditor(ev) {
   ev.preventDefault();
-  const { preset, action } = state.editingSlot || {};
+  const { bank, preset, action } = state.editingSlot || {};
   if (preset == null) return;
-  if (!state.padSlots) state.padSlots = emptySlots();
-  const key = `${preset}-${action}`;
+  if (!validPadBanks(state.padSlots)) state.padSlots = emptyPadBanks();
+  const slots = state.padSlots[bank];
+  const key = selectedBindingKey(preset, action, bank);
   const actionId = $("#s_action").value;
-  const labelIn = $("#s_label").value.slice(0, 23);
+  let labelIn;
+  try {
+    labelIn = truncatePadLabel($("#s_label").value);
+  } catch (error) {
+    toast(String(error));
+    return;
+  }
 
-  if (isHostBridgePreset(preset)) {
+  if (isHostBridgePreset(preset, bank)) {
     const bound = state.actions.find((x) => x.id === actionId);
     const chord = bridgeChordForAction(action);
-    state.padSlots[preset * ACTION_COUNT + action] = {
+    let label;
+    try {
+      label = truncatePadLabel(
+        labelIn || (bound ? bound.name : `Ctrl+Alt+${action + 1}`)
+      );
+    } catch (error) {
+      toast(String(error));
+      return;
+    }
+    slots[preset * ACTION_COUNT + action] = {
       ...chord,
-      label: labelIn || (bound ? bound.name.slice(0, 23) : `Ctrl+Alt+${action + 1}`),
+      label,
     };
     if (actionId) state.padBindings[key] = actionId;
     else delete state.padBindings[key];
@@ -753,7 +912,7 @@ function applySlotEditor(ev) {
     if ($("#s_mod_alt").checked) mod |= 4;
     if ($("#s_mod_gui").checked) mod |= 8;
     const mode = Number($("#s_mode").value) === 1 ? 1 : 0;
-    state.padSlots[preset * ACTION_COUNT + action] = {
+    slots[preset * ACTION_COUNT + action] = {
       mode,
       mod,
       key: parseU8($("#s_key").value),
@@ -770,7 +929,7 @@ function applySlotEditor(ev) {
   $("#slotDialog").close();
   renderPadGrid();
   toast(
-    isHostBridgePreset(preset)
+    isHostBridgePreset(preset, bank)
       ? "MCC action bound (Sync optional — chord already on pad)"
       : "Slot updated (Sync to pad to write device)"
   );
@@ -798,17 +957,81 @@ function updateBluezButton() {
   }
 }
 
+function updatePadProtocolControls() {
+  const incompatible = state.padProtocolCompatible === false;
+  const busy = state.padIoBusy === true;
+  const refresh = $("#padRefreshBtn");
+  const sync = $("#padSyncBtn");
+  const listen = $("#padListenBtn");
+  const bank = $("#padBankSelect");
+  const bluez = $("#padBluezBtn");
+  if (refresh) refresh.disabled = busy;
+  if (bank) bank.disabled = busy;
+  if (bluez) bluez.disabled = busy;
+  if (sync) {
+    sync.disabled = busy || incompatible;
+    sync.title = incompatible
+      ? "S3 dongle/pad protocol mismatch — flash the matched pair"
+      : busy
+        ? "Another pad operation is in progress"
+        : "";
+  }
+  if (listen) {
+    listen.disabled = busy || incompatible;
+    listen.title = incompatible
+      ? "Macro forwarding disabled by protocol mismatch"
+      : busy
+        ? "Another pad operation is in progress"
+        : "";
+  }
+}
+
+function setPadIoBusy(busy) {
+  state.padIoBusy = !!busy;
+  updatePadProtocolControls();
+}
+
+function setStoreReplaceBusy(busy) {
+  state.storeReplaceBusy = !!busy;
+  document.body.inert = !!busy;
+  document.body.setAttribute("aria-busy", String(!!busy));
+}
+
 async function refreshPad() {
   if (!isTauri()) return;
+  if (state.padIoBusy) {
+    toast("Another pad operation is already in progress");
+    return;
+  }
+  let st = null;
+  let line = "";
+  let restoreBank = state.padBank;
+  let successMessage = "";
+  setPadIoBusy(true);
   try {
-    const st = await tauriInvoke("pad_status", { address: state.padAddress });
+    st = await tauriInvoke("pad_status", { address: state.padAddress });
     if (st.address && st.address !== "via-s3-dongle") {
       state.padAddress = st.address;
     }
     state.padTransport = st.transport || null;
-    state.bluezBlocked =
-      typeof st.bluez_blocked === "boolean" ? st.bluez_blocked : null;
+    const protocolCompatible = st.protocolCompatible ?? st.protocol_compatible;
+    state.padProtocolCompatible = protocolCompatible !== false;
+    state.padSupportsBanks = st.info ? infoSupportsBanks(st.info) : null;
+    const selectedBank = st.selectedBank ?? st.selected_bank;
+    if (
+      state.padSupportsBanks === true &&
+      Number.isInteger(selectedBank) &&
+      selectedBank >= 0 && selectedBank < BANK_COUNT
+    ) {
+      state.padBank = selectedBank;
+    } else if (state.padSupportsBanks === false) {
+      state.padBank = 0;
+    }
+    restoreBank = state.padBank;
+    const bluezBlocked = st.bluezBlocked ?? st.bluez_blocked;
+    state.bluezBlocked = typeof bluezBlocked === "boolean" ? bluezBlocked : null;
     updateBluezButton();
+    updatePadProtocolControls();
     const via =
       st.transport === "dongle"
         ? "via S3 dongle"
@@ -821,42 +1044,92 @@ async function refreshPad() {
         : state.bluezBlocked === false
           ? " · BlueZ ready"
           : "";
-    const line = `${st.name || "Cyberdeck Pad"} · ${st.address} · ${
+    line = `${st.name || "Cyberdeck Pad"} · ${st.address} · ${
       st.connected ? "connected" : "disconnected"
     }${st.paired ? " · paired" : ""}${via ? " · " + via : ""}${bz}${
       st.info ? " · " + st.info : ""
     }`;
     $("#padStatusLine").textContent = line;
-    try {
-      state.padSlots = await tauriInvoke("pad_read_slots", { address: state.padAddress });
-      ensureHostBridgeSlots(state.padSlots);
-      toast(
-        st.transport === "dongle"
-          ? "Read slots via S3 dongle"
-          : "Read slots from pad"
-      );
-      await save();
-    } catch (e) {
-      if (!state.padSlots) state.padSlots = emptySlots();
-      $("#padStatusLine").textContent =
-        line +
-        (st.transport === "dongle"
-          ? " · slots proxy unavailable (dongle not linked?)"
-          : " · GATT unavailable (flash hybrid firmware?)");
-      toast(String(e));
+    if (state.padProtocolCompatible === false) {
+      $("#padStatusLine").textContent = `${line} · PROTOCOL MISMATCH — sync/listen disabled`;
+      renderPadGrid();
+      toast("S3 dongle protocol mismatch; refusing BlueZ fallback");
+      return;
     }
-    renderPadGrid();
+    const read = await tauriInvoke("pad_read_banks", {
+      address: state.padAddress,
+    });
+    const bankCount = Number(read?.bankCount ?? read?.bank_count);
+    const readBanks = Array.isArray(read?.banks) ? read.banks : [];
+    if (bankCount !== 1 && bankCount !== BANK_COUNT) {
+      throw new Error(`invalid device bank count ${bankCount}`);
+    }
+    if (readBanks.length !== bankCount) {
+      throw new Error(`read ${readBanks.length}/${bankCount} banks`);
+    }
+    const banks = validPadBanks(state.padSlots)
+      ? state.padSlots.map((slots) => slots.map((slot) => ({ ...slot })))
+      : emptyPadBanks();
+    if (bankCount === BANK_COUNT) {
+      if (!validPadBanks(readBanks)) throw new Error("invalid five-bank response");
+      for (let bank = 0; bank < BANK_COUNT; bank++) banks[bank] = readBanks[bank];
+    } else {
+      if (!Array.isArray(readBanks[0]) || readBanks[0].length !== SLOT_COUNT) {
+        throw new Error("invalid legacy bank-0 response");
+      }
+      banks[0] = readBanks[0];
+    }
+    state.padSupportsBanks = bankCount === BANK_COUNT;
+    const restoredBank = Number(read?.restoredBank ?? read?.restored_bank);
+    restoreBank =
+      Number.isInteger(restoredBank) && restoredBank >= 0 && restoredBank < bankCount
+        ? restoredBank
+        : 0;
+    state.padBank = restoreBank;
+    state.padSlots = banks;
+    ensureHostBridgeSlots(state.padSlots);
+    await save();
+    const readTransport = read?.transport || (st.transport === "dongle" ? "S3 dongle" : "pad");
+    successMessage = `Read ${bankCount} bank${bankCount === 1 ? "" : "s"} via ${readTransport}`;
   } catch (e) {
-    $("#padStatusLine").textContent =
-      "Pad not found — connect S3 dongle (or pair Cyberdeck Pad over BlueZ)";
-    toast(String(e));
+    if (!validPadBanks(state.padSlots)) state.padSlots = emptyPadBanks();
+    $("#padStatusLine").textContent = line
+      ? line +
+        (st?.transport === "dongle"
+          ? " · slots proxy unavailable (dongle not linked?)"
+          : " · GATT unavailable (flash hybrid firmware?)")
+      : "Pad not found — connect S3 dongle (or pair Cyberdeck Pad over BlueZ)";
+    try {
+      const after = await tauriInvoke("pad_status", { address: state.padAddress });
+      const selected = Number(after?.selectedBank ?? after?.selected_bank);
+      if (Number.isInteger(selected) && selected >= 0 && selected < BANK_COUNT) {
+        restoreBank = selected;
+      }
+    } catch {
+      // The transactional backend already attempted restoration; keep the last
+      // known selection when transport status is unavailable.
+    }
+    toast(`Pad refresh stopped: ${e}`);
+  } finally {
+    state.padBank = restoreBank;
+    setPadIoBusy(false);
+    renderPadGrid();
+    if (successMessage) {
+      toast(successMessage);
+    }
   }
 }
 
 async function toggleBluez() {
   if (!isTauri()) return;
+  if (state.padIoBusy) {
+    toast("Another pad operation is already in progress");
+    return;
+  }
   // Parked → release. Active/unknown → park (safer for dongle).
   const wantEnabled = state.bluezBlocked === true;
+  let refreshAfter = false;
+  setPadIoBusy(true);
   try {
     const st = await tauriInvoke("pad_set_bluez_enabled", {
       enabled: wantEnabled,
@@ -865,47 +1138,68 @@ async function toggleBluez() {
     if (st.address && st.address !== "via-s3-dongle") {
       state.padAddress = st.address;
     }
-    state.bluezBlocked =
-      typeof st.bluez_blocked === "boolean" ? st.bluez_blocked : !wantEnabled;
+    const bluezBlocked = st.bluezBlocked ?? st.bluez_blocked;
+    state.bluezBlocked = typeof bluezBlocked === "boolean" ? bluezBlocked : !wantEnabled;
     updateBluezButton();
     toast(
       wantEnabled
         ? "BlueZ released — host may claim the pad"
         : "BlueZ parked — safe for S3 dongle"
     );
-    await refreshPad();
+    refreshAfter = true;
   } catch (e) {
     toast(String(e));
+  } finally {
+    setPadIoBusy(false);
   }
+  if (refreshAfter) await refreshPad();
 }
 
 async function syncPad() {
   if (!isTauri()) return;
-  if (!state.padSlots || state.padSlots.length !== SLOT_COUNT) {
-    toast("No slots to sync — Refresh first");
+  if (state.padIoBusy) {
+    toast("Another pad operation is already in progress");
     return;
   }
+  if (state.padProtocolCompatible === false) {
+    toast("Protocol mismatch — flash the matched C6/S3 v0.3 pair first");
+    return;
+  }
+  if (!validPadBanks(state.padSlots)) {
+    toast("No five-bank slot set to sync — Refresh first");
+    return;
+  }
+  const restoreBank = state.padBank;
+  setPadIoBusy(true);
   try {
     ensureHostBridgeSlots(state.padSlots);
-    await tauriInvoke("pad_write_slots", {
+    const result = await tauriInvoke("pad_write_banks", {
       address: state.padAddress,
-      slots: state.padSlots,
+      banks: state.padSlots,
     });
     await save();
-    renderPadGrid();
-    toast(
-      state.padTransport === "dongle"
-        ? `Synced ${SLOT_COUNT} slots via S3 dongle`
-        : `Synced ${SLOT_COUNT} slots to pad (P3 = Ctrl+Alt bridge)`
-    );
-    await save();
+    toast(`Pad sync complete: ${result}`);
   } catch (e) {
     toast(String(e));
+  } finally {
+    setPadIoBusy(false);
+    state.padBank = restoreBank;
+    renderBankSelector();
+    renderPadGrid();
   }
 }
 
 async function toggleListen() {
   if (!isTauri()) return;
+  if (state.padIoBusy) {
+    toast("Another pad operation is already in progress");
+    return;
+  }
+  if (state.padProtocolCompatible === false) {
+    toast("Protocol mismatch — macro listener disabled");
+    return;
+  }
+  setPadIoBusy(true);
   try {
     if (state.padListening) {
       await tauriInvoke("stop_macro_listen");
@@ -920,6 +1214,8 @@ async function toggleListen() {
     }
   } catch (e) {
     toast(String(e));
+  } finally {
+    setPadIoBusy(false);
   }
 }
 
@@ -947,7 +1243,7 @@ function openForm(id = null) {
   $("#f_name").focus();
 }
 
-function submitForm(ev) {
+async function submitForm(ev) {
   ev.preventDefault();
   const input = {
     name: $("#f_name").value,
@@ -965,41 +1261,64 @@ function submitForm(ev) {
   }
   const existing = state.editingId ? state.actions.find((x) => x.id === state.editingId) : null;
   const action = normalizeAction(input, existing);
+  if (
+    existing &&
+    state.allowedCommands.has(existing.id) &&
+    (existing.type !== action.type || existing.value !== action.value)
+  ) {
+    state.allowedCommands.delete(existing.id);
+  }
   if (existing) {
     state.actions = state.actions.map((x) => (x.id === existing.id ? action : x));
   } else {
     state.actions.push(action);
   }
-  save();
+  try {
+    await save();
+  } catch (e) {
+    toast(`Save failed: ${e}`);
+    return;
+  }
   $("#dialog").close();
   render();
   toast(existing ? "Saved" : "Added");
 }
 
 function exportJson() {
-  const payload = {
-    actions: state.actions,
-    padBindings: state.padBindings,
-    padPresetNames: normalizePresetNames(state.padPresetNames),
-    composers: normalizeComposers(state.composers),
-    allowedCommands: [...state.allowedCommands],
-  };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = el("a", { href: url, download: "macro-actions.json" });
-  document.body.append(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+  try {
+    const payload = {
+      actions: state.actions,
+      ...buildPortablePadState(state.padBindings, state.padSlots),
+      padPresetNames: normalizePresetNames(state.padPresetNames),
+      composers: normalizeComposers(state.composers),
+      allowedCommands: [...state.allowedCommands],
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = el("a", { href: url, download: "macro-actions.json" });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    toast(`Export failed: ${error}`);
+  }
 }
 
 function importJson(file) {
+  if (storeReplacementBlocked(state)) {
+    toast("Another pad/store operation is already in progress");
+    return;
+  }
   const reader = new FileReader();
-  reader.onload = () => {
+  reader.onload = async () => {
+    let replacing = false;
+    let previous = null;
     try {
       const data = JSON.parse(reader.result);
       let list = Array.isArray(data) ? data : data.actions;
       if (!Array.isArray(list)) throw new Error("file is not an array / store");
+      const portable = readPortablePadState(data);
       const cleaned = dedupeById(
         list.map((raw) => normalizeAction(raw)).filter((a) => validateAction(a).ok)
       );
@@ -1013,23 +1332,57 @@ function importJson(file) {
         toast("Import cancelled");
         return;
       }
+      if (storeReplacementBlocked(state)) {
+        toast("Import cancelled because another pad/store operation started");
+        return;
+      }
+
+      // Drain the previous save queue, closing the replacement gate in this
+      // same JavaScript task so no stale snapshot can enter behind it.
+      const pendingSave = save();
+      setPadIoBusy(true);
+      setStoreReplaceBusy(true);
+      replacing = true;
+      await pendingSave;
+      previous = captureSaveSnapshot();
+
       state.actions = cleaned;
-      if (!Array.isArray(data) && data.padBindings) state.padBindings = data.padBindings;
-      if (!Array.isArray(data) && data.padPresetNames) {
+      // Portable JSON is data, never an authority grant. Imported command
+      // actions must be approved locally against their exact text.
+      state.allowedCommands = new Set();
+      if (portable.hasPadBindings) state.padBindings = portable.padBindings;
+      if (portable.hasPadSlots) state.padSlots = portable.padSlots;
+      if (!Array.isArray(data) && Object.prototype.hasOwnProperty.call(data, "padPresetNames")) {
         state.padPresetNames = normalizePresetNames(data.padPresetNames);
       }
-      if (!Array.isArray(data) && data.composers) {
+      if (!Array.isArray(data) && Object.prototype.hasOwnProperty.call(data, "composers")) {
         state.composers = normalizeComposers(data.composers);
       }
-      save();
+      await persistSaveSnapshot(captureSaveSnapshot());
+      // Persistence is authoritative from this point; a later rendering error
+      // must not roll the UI back to a store that is no longer on disk.
+      previous = null;
       render();
       renderComposerPanel();
       renderPadGrid();
-      toast(`Imported ${cleaned.length} actions`);
+      const bankNote = portable.hasPadSlots ? " and pad banks" : "";
+      toast(`Imported ${cleaned.length} actions${bankNote}`);
     } catch (e) {
+      if (previous) {
+        applySaveSnapshot(previous);
+        render();
+        renderComposerPanel();
+        renderPadGrid();
+      }
       toast("Import failed: " + e.message);
+    } finally {
+      if (replacing) {
+        setStoreReplaceBusy(false);
+        setPadIoBusy(false);
+      }
     }
   };
+  reader.onerror = () => toast("Import failed: file could not be read");
   reader.readAsText(file);
 }
 
@@ -1082,6 +1435,7 @@ async function exportProfileDisk() {
   const name = prompt("Profile name", "dev");
   if (!name) return;
   try {
+    await save();
     const path = await tauriInvoke("export_profile", { name });
     toast(`Exported → ${path}`);
   } catch (e) {
@@ -1099,6 +1453,10 @@ async function importProfileDisk() {
     `${(window.__MCC_HOME_HINT || "~")}/.config/3dl-macro-command-center/profiles/dev.json`
   );
   if (!path) return;
+  if (state.padIoBusy) {
+    toast("Another pad operation is already in progress");
+    return;
+  }
   if (
     state.actions.length > 0 &&
     !confirm(`Replace current MCC store with profile from:\n${path}?`)
@@ -1106,28 +1464,74 @@ async function importProfileDisk() {
     toast("Import cancelled");
     return;
   }
+  let pendingSave;
   try {
-    const store = await tauriInvoke("import_profile", { path });
+    pendingSave = save();
+  } catch (e) {
+    toast(`Import blocked because current state could not be saved: ${e}`);
+    return;
+  }
+  setPadIoBusy(true);
+  setStoreReplaceBusy(true);
+  try {
+    try {
+      await pendingSave;
+    } catch (e) {
+      toast(`Import blocked because current state could not be saved: ${e}`);
+      return;
+    }
+    const result = await tauriInvoke("import_profile", { path });
+    const store = result?.store ?? result;
     applyStoreFromRust(store);
-    toast("Profile imported");
+    toast(result?.padWrite ? `Profile imported · ${result.padWrite}` : "Profile imported");
   } catch (e) {
     toast(String(e));
+  } finally {
+    try {
+      applyStoreFromRust(await tauriInvoke("get_store"));
+    } catch (e) {
+      console.error("failed to reload authoritative store after profile import", e);
+    }
+    await reconcilePadSelectionFromStatus();
+    setStoreReplaceBusy(false);
+    setPadIoBusy(false);
   }
 }
 
 function applyStoreFromRust(store) {
   state.actions = (store.actions || []).map(fromRustAction);
-  state.padBindings = store.padBindings || {};
+  state.padBindings = migratePadBindings(store.padBindings);
   state.padPresetNames = normalizePresetNames(store.padPresetNames);
   state.composers = normalizeComposers(store.composers);
   state.allowedCommands = new Set(store.allowedCommands || []);
-  if (Array.isArray(store.padSlots) && store.padSlots.length === SLOT_COUNT) {
-    state.padSlots = store.padSlots;
+  const banks = normalizePadBanks(store.padSlots);
+  if (banks) {
+    state.padSlots = banks;
     ensureHostBridgeSlots(state.padSlots);
   }
   render();
   renderPadGrid();
   renderComposerPanel();
+}
+
+async function reconcilePadSelectionFromStatus() {
+  if (!isTauri()) return;
+  try {
+    const status = await tauriInvoke("pad_status", { address: state.padAddress });
+    if (status.address && status.address !== "via-s3-dongle") {
+      state.padAddress = status.address;
+    }
+    state.padTransport = status.transport || state.padTransport;
+    const selected = Number(status.selectedBank ?? status.selected_bank);
+    if (Number.isInteger(selected) && selected >= 0 && selected < BANK_COUNT) {
+      state.padBank = selected;
+    }
+    if (status.info) state.padSupportsBanks = infoSupportsBanks(status.info);
+    renderBankSelector();
+    renderPadGrid();
+  } catch (error) {
+    console.warn("pad selection reconciliation failed", error);
+  }
 }
 
 function fillGitProfileSelect(profiles, active) {
@@ -1225,13 +1629,29 @@ async function gitPullApply() {
   if (!isTauri()) return toast("Desktop only");
   const name = $("#gitProfileSelect")?.value;
   if (!name) return toast("Select a profile first");
+  if (state.padIoBusy) return toast("Another pad operation is already in progress");
   if (
     state.actions.length > 0 &&
     !confirm(`Pull & replace live MCC store with profile "${name}"?`)
   ) {
     return;
   }
+  let pendingSave;
   try {
+    pendingSave = save();
+  } catch (e) {
+    toast(`Git apply blocked because current state could not be saved: ${e}`);
+    return;
+  }
+  setPadIoBusy(true);
+  setStoreReplaceBusy(true);
+  try {
+    try {
+      await pendingSave;
+    } catch (e) {
+      toast(`Git apply blocked because current state could not be saved: ${e}`);
+      return;
+    }
     const result = await tauriInvoke("git_sync_pull_apply", { name });
     const store = result?.store ?? result;
     applyStoreFromRust(store);
@@ -1247,8 +1667,10 @@ async function gitPullApply() {
       result?.padSlotCount ?? result?.pad_slot_count ?? 0;
     const padWrite = result?.padWrite || result?.pad_write || "";
     const slotNote =
-      slotCount === SLOT_COUNT
-        ? ` · ${SLOT_COUNT} pad slots${padWrite ? ` (${padWrite})` : ""}`
+      slotCount === BANK_COUNT * SLOT_COUNT
+        ? ` · ${BANK_COUNT * SLOT_COUNT} pad slots${padWrite ? ` (${padWrite})` : ""}`
+        : slotCount === SLOT_COUNT
+          ? ` · legacy bank 1 / ${SLOT_COUNT} pad slots${padWrite ? ` (${padWrite})` : ""}`
         : " · no pad slots in profile";
     if (unchanged) {
       toast(
@@ -1260,6 +1682,15 @@ async function gitPullApply() {
     await refreshGitSyncStatus();
   } catch (e) {
     toast(String(e));
+  } finally {
+    try {
+      applyStoreFromRust(await tauriInvoke("get_store"));
+    } catch (e) {
+      console.error("failed to reload authoritative store after Git apply", e);
+    }
+    await reconcilePadSelectionFromStatus();
+    setStoreReplaceBusy(false);
+    setPadIoBusy(false);
   }
 }
 
@@ -1320,14 +1751,16 @@ async function init() {
     state.padPresetNames = normalizePresetNames(loaded.padPresetNames);
     state.composers = normalizeComposers(loaded.composers);
     state.allowedCommands = loaded.allowedCommands;
-    if (loaded.padSlots && loaded.padSlots.length === SLOT_COUNT) {
+    if (validPadBanks(loaded.padSlots)) {
       state.padSlots = loaded.padSlots;
     }
     renderPadGrid();
     renderComposerPanel();
     await tauriListen("macro-fired", async (p) => {
+      if (state.storeReplaceBusy) return;
       const msg = String(p.result || "");
-      toast(`Macro ${presetDisplayName(p.preset ?? 0)}/${BTN_NAMES[p.action] || p.action}: ${msg}`);
+      const bank = BANKS[p.bank ?? 0]?.name || `bank ${Number(p.bank ?? 0) + 1}`;
+      toast(`Macro ${bank}/${presetDisplayName(p.preset ?? 0)}/${BTN_NAMES[p.action] || p.action}: ${msg}`);
       // If a command was blocked, offer Allow + retry once.
       if (msg.includes("not allowed yet") && p.actionId) {
         const act = state.actions.find((a) => a.id === p.actionId);
@@ -1357,8 +1790,18 @@ async function init() {
       state.padListening = !!on;
       $("#padListenBtn").textContent = on ? "Stop listening" : "Listen for macros";
     });
+    await tauriListen("pad-bank-changed", (value) => {
+      if (state.padIoBusy) return;
+      const bank = Number(value);
+      if (!Number.isInteger(bank) || bank < 0 || bank >= BANK_COUNT) return;
+      state.padSupportsBanks = true;
+      state.padBank = bank;
+      renderBankSelector();
+      renderPadGrid();
+    });
     $("#padRefreshBtn").addEventListener("click", refreshPad);
     $("#padSyncBtn").addEventListener("click", syncPad);
+    $("#padBankSelect").addEventListener("change", selectPadBank);
     $("#padBluezBtn").addEventListener("click", toggleBluez);
     $("#padListenBtn").addEventListener("click", toggleListen);
     $("#s_mode").addEventListener("change", syncSlotModeFields);
@@ -1383,11 +1826,12 @@ async function init() {
     state.padPresetNames = normalizePresetNames(loaded.padPresetNames);
     state.composers = normalizeComposers(loaded.composers);
     state.allowedCommands = loaded.allowedCommands;
-    if (loaded.padSlots && loaded.padSlots.length === SLOT_COUNT) {
+    if (validPadBanks(loaded.padSlots)) {
       state.padSlots = loaded.padSlots;
     }
     renderPadGrid();
     renderComposerPanel();
+    $("#padBankSelect")?.addEventListener("change", selectPadBank);
   }
 
   $("#search").addEventListener("input", (e) => {

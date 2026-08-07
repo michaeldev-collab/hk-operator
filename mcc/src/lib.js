@@ -24,11 +24,10 @@ export const ACTION_TYPES = [
 export function defaultComposers() {
   return {
     ai: {
-      // Public portfolio defaults — no private board slash names.
       commands: ["/help", "/review", "/plan"],
       separator: " ",
       timeoutMs: 60000,
-      resetOn: ["space", "explicitClear"], // no idle timeout — Reset only
+      resetOn: ["space", "explicitClear"], // no idle timeout — B4 / Reset only
     },
   };
 }

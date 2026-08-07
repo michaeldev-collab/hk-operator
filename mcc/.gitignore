@@ -6,3 +6,7 @@
 .DS_Store
 .env
 .env.*
+.build/
+
+# Pinned ESP32-C6 SDK libs (240MB, see firmware/vendor/README.md)
+firmware/vendor/

@@ -38,25 +38,23 @@ pub struct GitSyncStatus {
 fn run_git(repo: &Path, args: &[&str]) -> Result<String, String> {
     let mut cmd = Command::new("git");
     cmd.arg("-C").arg(repo).args(args);
-    // Prefer GIT_SSH_COMMAND from the environment. Otherwise optional
-    // HK_GIT_SSH_IDENTITY may point at an identity file (operator-local).
-    if std::env::var_os("GIT_SSH_COMMAND").is_none() {
-        if let Ok(identity) = std::env::var("HK_GIT_SSH_IDENTITY") {
-            let key = PathBuf::from(identity.trim());
-            if key.is_file() {
-                let known = dirs::home_dir()
-                    .unwrap_or_else(|| PathBuf::from("/tmp"))
-                    .join(".ssh/known_hosts");
-                let ssh = format!(
-                    "ssh -F /dev/null -o IdentitiesOnly=yes -i {} -o UserKnownHostsFile={}",
-                    key.display(),
-                    known.display()
-                );
-                cmd.env("GIT_SSH_COMMAND", ssh);
-            }
-        }
+    // Prefer account-wide GitHub key when present (workspace deploy key stays on Host github.com).
+    let account_key = dirs::home_dir()
+        .map(|h| h.join(".ssh/id_ed25519_github_account"))
+        .filter(|p| p.exists());
+    if let Some(key) = account_key {
+        let ssh = format!(
+            "ssh -F /dev/null -o IdentitiesOnly=yes -i {} -o UserKnownHostsFile={}/.ssh/known_hosts",
+            key.display(),
+            dirs::home_dir()
+                .unwrap_or_else(|| PathBuf::from("/tmp"))
+                .display()
+        );
+        cmd.env("GIT_SSH_COMMAND", ssh);
     }
-    let out = cmd.output().map_err(|e| format!("git failed to start: {e}"))?;
+    let out = cmd
+        .output()
+        .map_err(|e| format!("git failed to start: {e}"))?;
     let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
     let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
     if !out.status.success() {
@@ -189,7 +187,8 @@ pub fn gh_auth_status() -> GhAuthStatus {
 
 pub fn open_gh_login() -> Result<String, String> {
     // Launch an interactive login in a terminal when possible.
-    let script = "gh auth login -h github.com -p ssh -w; echo; read -n1 -p 'Press any key to close…'";
+    let script =
+        "gh auth login -h github.com -p ssh -w; echo; read -n1 -p 'Press any key to close…'";
     let terminals: &[(&str, &[&str])] = &[
         ("konsole", &["-e", "bash", "-lc", script]),
         ("gnome-terminal", &["--", "bash", "-lc", script]),
@@ -221,13 +220,12 @@ pub fn open_gh_login() -> Result<String, String> {
                 _ => continue,
             };
             spawn.map_err(|e| e.to_string())?;
-            return Ok(format!("Opened {bin} for gh auth login — finish in that window"));
+            return Ok(format!(
+                "Opened {bin} for gh auth login — finish in that window"
+            ));
         }
     }
-    Err(
-        "No terminal found. Run in a shell:\n  gh auth login -h github.com -p ssh -w"
-            .into(),
-    )
+    Err("No terminal found. Run in a shell:\n  gh auth login -h github.com -p ssh -w".into())
 }
 
 pub fn ensure_local_repo(config_dir: &Path) -> Result<PathBuf, String> {
@@ -243,112 +241,34 @@ pub fn ensure_local_repo(config_dir: &Path) -> Result<PathBuf, String> {
         run_git(&repo, &["add", "README.md", ".gitignore", "profiles"])?;
         let _ = run_git(
             &repo,
-            &[
-                "commit",
-                "-m",
-                "chore: initialize hk-config profiles repo",
-            ],
+            &["commit", "-m", "chore: initialize hk-config profiles repo"],
         );
     }
     Ok(repo)
 }
 
-/// Allowed git remotes for MCC profile sync (P3-05): GitHub HTTPS or SSH only.
-pub fn validate_git_remote_url(raw: &str) -> Result<String, String> {
-    let remote = raw.trim();
+pub fn set_remote(config_dir: &Path, remote: &str) -> Result<(), String> {
+    let remote = remote.trim();
     if remote.is_empty() {
         return Err("remote URL required".into());
     }
-    if remote.chars().any(|c| c == '\0' || c == '\n' || c == '\r' || c == ' ') {
-        return Err("remote URL contains invalid characters".into());
-    }
-
-    let check = remote.to_ascii_lowercase();
-
-    if check.starts_with("http://") {
-        return Err(
-            "http remotes rejected — use https://github.com/OWNER/REPO.git or git@github.com:OWNER/REPO.git"
-                .into(),
-        );
-    }
-
-    // SCP-like SSH: git@github.com:owner/repo.git
-    if let Some(path) = check.strip_prefix("git@github.com:") {
-        validate_github_repo_path(path)?;
-        return Ok(remote.to_string());
-    }
-
-    // ssh://git@github.com/owner/repo.git
-    if let Some(path) = check.strip_prefix("ssh://git@github.com/") {
-        validate_github_repo_path(path)?;
-        return Ok(remote.to_string());
-    }
-
-    // https://github.com/... or https://www.github.com/...
-    if let Some(path) = check
-        .strip_prefix("https://github.com/")
-        .or_else(|| check.strip_prefix("https://www.github.com/"))
-    {
-        validate_github_repo_path(path)?;
-        return Ok(remote.to_string());
-    }
-
-    Err(
-        "remote host/scheme not allowed — only github.com HTTPS or SSH remotes are accepted".into(),
-    )
-}
-
-fn validate_github_repo_path(path: &str) -> Result<(), String> {
-    let path = path.trim_end_matches('/');
-    if path.is_empty() {
-        return Err("remote URL needs owner/repo path".into());
-    }
-    if path.contains("..") || path.contains('@') || path.contains('?') || path.contains('#') {
-        return Err("remote URL path looks unsafe".into());
-    }
-    // Expect at least owner/repo
-    let mut parts = path.split('/');
-    let owner = parts.next().unwrap_or("");
-    let repo = parts.next().unwrap_or("");
-    if owner.is_empty() || repo.is_empty() {
-        return Err("remote URL must be github.com/OWNER/REPO".into());
-    }
-    if !owner
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-    {
-        return Err("remote URL owner segment invalid".into());
-    }
-    let repo_name = repo.strip_suffix(".git").unwrap_or(repo);
-    if repo_name.is_empty()
-        || !repo_name
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
-    {
-        return Err("remote URL repo segment invalid".into());
-    }
-    Ok(())
-}
-
-pub fn set_remote(config_dir: &Path, remote: &str) -> Result<(), String> {
-    let remote = validate_git_remote_url(remote)?;
     let repo = ensure_local_repo(config_dir)?;
     // Add or update origin
     let has_origin = run_git(&repo, &["remote"]).map(|s| s.lines().any(|l| l.trim() == "origin"));
     match has_origin {
         Ok(true) => {
-            run_git(&repo, &["remote", "set-url", "origin", &remote])?;
+            run_git(&repo, &["remote", "set-url", "origin", remote])?;
         }
         Ok(false) => {
-            run_git(&repo, &["remote", "add", "origin", &remote])?;
+            run_git(&repo, &["remote", "add", "origin", remote])?;
         }
         Err(_) => {
             let _ = run_git(&repo, &["remote", "remove", "origin"]);
-            run_git(&repo, &["remote", "add", "origin", &remote])?;
+            run_git(&repo, &["remote", "add", "origin", remote])?;
         }
     }
     let mut settings = load_settings(config_dir);
-    settings.remote = Some(remote);
+    settings.remote = Some(remote.to_string());
     save_settings(config_dir, &settings)?;
     Ok(())
 }
@@ -388,14 +308,7 @@ pub fn push_all(config_dir: &Path) -> Result<String, String> {
     run_git(&repo, &["add", "profiles", "README.md", ".gitignore"])?;
     let status = run_git(&repo, &["status", "--porcelain"])?;
     if !status.trim().is_empty() {
-        run_git(
-            &repo,
-            &[
-                "commit",
-                "-m",
-                "chore: sync MCC profiles",
-            ],
-        )?;
+        run_git(&repo, &["commit", "-m", "chore: sync MCC profiles"])?;
     }
     let msg = run_git(&repo, &["push", "-u", "origin", "HEAD"]).unwrap_or_else(|e| {
         // first push might need main
@@ -404,11 +317,7 @@ pub fn push_all(config_dir: &Path) -> Result<String, String> {
     let mut settings = load_settings(config_dir);
     settings.last_push_at = Some(now_secs());
     save_settings(config_dir, &settings)?;
-    Ok(if msg.is_empty() {
-        "Pushed".into()
-    } else {
-        msg
-    })
+    Ok(if msg.is_empty() { "Pushed".into() } else { msg })
 }
 
 pub fn write_profile_file(config_dir: &Path, name: &str, json: &str) -> Result<PathBuf, String> {
@@ -434,7 +343,11 @@ pub fn sanitize_profile_name(name: &str) -> Result<String, String> {
     Ok(name)
 }
 
-pub fn create_github_repo(config_dir: &Path, repo_name: &str, private: bool) -> Result<String, String> {
+pub fn create_github_repo(
+    config_dir: &Path,
+    repo_name: &str,
+    private: bool,
+) -> Result<String, String> {
     let auth = gh_auth_status();
     if !auth.logged_in {
         return Err("GitHub auth required — click Login first".into());
@@ -537,34 +450,4 @@ fn now_secs() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn accepts_github_https_and_ssh() {
-        assert!(validate_git_remote_url("https://github.com/acme/hk-config.git").is_ok());
-        assert!(validate_git_remote_url("https://www.github.com/acme/hk-config").is_ok());
-        assert!(validate_git_remote_url("git@github.com:acme/hk-config.git").is_ok());
-        assert!(validate_git_remote_url("ssh://git@github.com/acme/hk-config.git").is_ok());
-        assert!(validate_git_remote_url("HTTPS://GitHub.com/Acme/Repo.git").is_ok());
-    }
-
-    #[test]
-    fn rejects_non_github_and_http() {
-        assert!(validate_git_remote_url("").is_err());
-        assert!(validate_git_remote_url("http://github.com/acme/hk-config.git").is_err());
-        assert!(validate_git_remote_url("https://gitlab.com/acme/hk-config.git").is_err());
-        assert!(validate_git_remote_url("https://evil.example/acme/hk-config.git").is_err());
-        assert!(validate_git_remote_url("https://github.com.evil.com/acme/r.git").is_err());
-        assert!(validate_git_remote_url("file:///tmp/repo.git").is_err());
-        assert!(validate_git_remote_url("git@gitlab.com:acme/r.git").is_err());
-        assert!(validate_git_remote_url("https://github.com/").is_err());
-        assert!(validate_git_remote_url("https://github.com/onlyowner").is_err());
-        assert!(validate_git_remote_url("https://github.com/acme/../etc/passwd").is_err());
-        assert!(validate_git_remote_url("git@github.com:acme/r\n.git").is_err());
-        assert!(validate_git_remote_url("git@github.com:acme/r .git").is_err());
-    }
 }

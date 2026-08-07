@@ -2,7 +2,7 @@
 
 **Status:** design only — do not implement yet.  
 **Source:** ChatGPT working notes (user) — interaction model for AI / Matrix slash commands.  
-**Parent product:** Cyberpad + HK Operator MCC (Rust desktop).  
+**Parent product:** Cyberdeck Pad + MCC (Rust desktop).  
 **Thesis:** one physical button becomes a **command composer** (rotating token stack), not one key per slash command.
 
 ---
@@ -16,7 +16,7 @@ Press AI button → paste next `/command` in a cycle → type Space (or other se
 ## Interaction model
 
 ```text
-Press button → inserts /help
+Press button → inserts /3dl-matrix
 Press space
 Press button again → rotates → inserts next command
 Keep chaining until the prompt has the stack you want
@@ -27,9 +27,9 @@ Example sequence:
 
 | Press | Inserted token |
 | --- | --- |
-| 1 | `/help` |
+| 1 | `/3dl-matrix` |
 | (space) | separator |
-| 2 | `/review` |
+| 2 | `/3dl-matrix-killcritic` |
 | (space) | separator |
 | 3 | `/another-command` |
 
@@ -98,8 +98,8 @@ Target architecture: composer lives in **MCC** (Rust), driven by macro (or fire)
   "composers": {
     "ai": {
       "commands": [
-        "/help",
-        "/review"
+        "/3dl-matrix",
+        "/3dl-matrix-killcritic"
       ],
       "separator": " ",
       "timeoutMs": 4000,

@@ -6,7 +6,7 @@
     <title>3DL Macro Command Center</title>
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
-    <link rel="stylesheet" href="./styles.css?v=6p12" />
+    <link rel="stylesheet" href="./styles.css?v=7b1" />
   </head>
   <body>
     <header class="topbar">
@@ -14,7 +14,7 @@
         <img class="logo" src="./3dl-mark.png" alt="3D Design Labs" />
         <div>
           <h1>3DL Macro Command Center</h1>
-          <p class="sub">Cyberdeck Pad companion — HID + BLE macros · UI 6p12</p>
+          <p class="sub">Cyberdeck Pad companion — 5 banks · HID + BLE macros · UI 7b1</p>
         </div>
       </div>
       <div class="actions">
@@ -36,6 +36,9 @@
           <p class="sub pad-preset-count">Name presets below — click a title to rename · P4–P6 use dual LEDs</p>
         </div>
         <div class="pad-actions">
+          <label class="bank-picker">Bank
+            <select id="padBankSelect" aria-label="Active Cyberdeck Pad bank"></select>
+          </label>
           <button id="padRefreshBtn" class="btn">Refresh</button>
           <button id="padSyncBtn" class="btn primary">Sync to pad</button>
           <button
@@ -54,7 +57,7 @@
       <div id="padGridMount"></div>
 
       <p id="padHint" class="pad-hint">
-        B1 cycles presets on the pad. Preset 3 stays Ctrl+Alt+1/2/3 (pick MCC action here).
+        B3 short cycles banks; B1 cycles presets. Bank 1 preset 3 stays Ctrl+Alt+1/2/3 (pick MCC action here).
         Commands need Allow before they run.
       </p>
     </section>
@@ -76,14 +79,14 @@
       <div class="composer-row">
         <label>Separator<input id="composerSeparator" maxlength="8" /></label>
       </div>
-      <p class="pad-hint">Quick double-tap = start or rotate. Space locks (Cursor chip stays). Double-tap stacks the next command. New loop is <strong>Reset cycle</strong> or a <code>composer-reset</code> pad action — no Esc, no idle timeout.</p>
+      <p class="pad-hint">Quick double-tap = start or rotate. Space locks (Cursor chip stays). Double-tap stacks the next command. New loop is <strong>only</strong> Preset 3 · <strong>B4</strong> (or Reset cycle) — no Esc, no idle timeout (those wiped stacks).</p>
     </section>
 
     <section id="gitSyncPanel" class="pad-panel composer-panel">
       <div class="pad-head">
         <div>
           <h2>Git config sync</h2>
-          <p class="sub">Clone lives under <code>~/.config/…/hk-config/</code>. Profiles include actions, bindings, preset names, <strong>and the 18 pad HID slots</strong>. Pull &amp; apply restores the store and writes slots to the pad when linked.</p>
+          <p class="sub">Clone lives under <code>~/.config/…/hk-config/</code>. Profiles include actions, bank-scoped bindings, preset names, <strong>and all 90 pad slots</strong>. Pull &amp; apply restores the store and writes all five banks when linked.</p>
         </div>
         <div class="pad-actions">
           <button id="gitSyncRefreshBtn" class="btn" type="button">Refresh</button>
@@ -175,6 +178,6 @@
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-    <script type="module" src="./app.js?v=6p9"></script>
+    <script type="module" src="./app.js?v=7b1"></script>
   </body>
 </html>

@@ -1,17 +1,9 @@
-# Portfolio notes — HK Operator / MCC
+# Portfolio notes — Cyberdeck / MCC
 
 | Doc | Idea | Status |
 | --- | --- | --- |
-| [../../docs/portfolio-engineering-plan.md](../../docs/portfolio-engineering-plan.md) | Phased verify → review → CI → release plan | **Phases 0–5 done; Phase 6 evidence shipped** |
-| [../../docs/portfolio-evidence/](../../docs/portfolio-evidence/) | Sanitized Cyberpad→MCC stills + workflow GIF | **Phase 6** |
-| [../../docs/release-packaging.md](../../docs/release-packaging.md) | MCC `.deb`, firmware checksums, compat, rollback | **Phase 7 draft** |
-| [../../docs/COMPATIBILITY.md](../../docs/COMPATIBILITY.md) | MCC ↔ firmware support matrix | **Phase 7 draft** |
-| [../../hardware/cyberpad-v2/](../../hardware/cyberpad-v2/) | V2 PCB concept + case SCAD/STL | **Phase 8 draft** |
-| [../../docs/architecture.md](../../docs/architecture.md) | Platform architecture | Current |
-| [../../docs/hardware-v1.md](../../docs/hardware-v1.md) | Cyberpad V1 validation story + photos | Current |
-| [portfolio-hk-config-sync.md](./portfolio-hk-config-sync.md) | Config as data; profile import/export + git sync UI | **MVP shipped** |
-| [portfolio-slash-command-composer.md](./portfolio-slash-command-composer.md) | One pad button cycles slash tokens | **MVP shipped** |
+| [hk-operator-prep.md](./hk-operator-prep.md) | Public GitHub repo `hk-operator` | **scaffold at `/home/stitch/hk-operator`** (no push / no LICENSE yet) |
+| [portfolio-hk-config-sync.md](./portfolio-hk-config-sync.md) | Config as data; profile import/export + git sync UI | **MVP shipped** (disk profiles + GitHub pull/push/apply) |
+| [portfolio-slash-command-composer.md](./portfolio-slash-command-composer.md) | One pad button cycles `/slash` tokens | **MVP shipped** (type `composer`, panel + timeout reset) |
 
-**Story arc:** one-day Cyberpad → hybrid BLE device → Rust MCC → portable config + composable AI command surface.
-
-Public repo: https://github.com/michaeldev-collab/hk-operator (MIT).
+**Story arc:** junk-drawer pad → hybrid BLE device → Rust MCC → portable config + composable AI command surface.

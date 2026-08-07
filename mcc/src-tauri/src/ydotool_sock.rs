@@ -13,7 +13,7 @@ use std::process::{Command, Stdio};
 pub const YDOTOOLD_SOCKET_MODE: &str = "0600";
 
 /// Runtime subdirectory under `$XDG_RUNTIME_DIR` / config fallback.
-const RUNTIME_APP_DIR: &str = "hk-operator";
+const RUNTIME_APP_DIR: &str = "3dl-macro-command-center";
 
 /// Resolved socket location plus whether the operator owns the parent dir policy.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -173,7 +173,7 @@ mod tests {
     #[test]
     fn spawn_args_use_0600_not_0666() {
         let args = ydotoold_spawn_args(Path::new(
-            "/run/user/1000/hk-operator/ydotool.sock",
+            "/run/user/1000/3dl-macro-command-center/ydotool.sock",
         ));
         assert_eq!(args[0], "-p");
         assert_eq!(args[2], "-P");
@@ -231,7 +231,10 @@ mod tests {
         let sock = dir.join("ydotool.sock");
         assert!(!prepare_ydotool_socket(&sock, false).unwrap());
         let mode = fs::metadata(&dir).unwrap().permissions().mode() & 0o777;
-        assert_eq!(mode, 0o755, "must not chmod shared parent for YDOTOOL_SOCKET");
+        assert_eq!(
+            mode, 0o755,
+            "must not chmod shared parent for YDOTOOL_SOCKET"
+        );
         fs::remove_dir_all(&dir).ok();
     }
 
@@ -253,11 +256,7 @@ mod tests {
 
     #[test]
     fn config_dir_path_is_not_marked_external() {
-        let r = resolve_ydotool_socket_from(
-            None,
-            None,
-            Some(Path::new("/tmp/hk-cfg-test")),
-        );
+        let r = resolve_ydotool_socket_from(None, None, Some(Path::new("/tmp/hk-cfg-test")));
         assert!(!r.external_override);
         assert_eq!(r.path, PathBuf::from("/tmp/hk-cfg-test/ydotool.sock"));
     }

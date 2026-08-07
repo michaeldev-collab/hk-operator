@@ -51,7 +51,7 @@ export const SEED_ACTIONS = [
     name: "Composer — new loop",
     category: "Cursor Prompts",
     type: "composer-reset",
-    description: "Clear composer session/watchdog so the next double-tap starts a fresh stack.",
+    description: "Clear composer session/watchdog so the next double-tap starts a fresh stack (Preset 3 · B4).",
     value: "ai",
     tags: ["composer", "reset", "loop"],
     favorite: true,

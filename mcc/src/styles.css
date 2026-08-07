@@ -213,6 +213,20 @@ body {
 }
 .pad-head h2 { margin: 0; font-size: 16px; }
 .pad-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.bank-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.bank-picker select {
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 9px;
+}
 .pad-row-title {
   margin: 14px 0 8px;
   font-size: 12px;

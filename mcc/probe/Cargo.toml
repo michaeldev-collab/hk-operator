@@ -9,8 +9,13 @@ description = "CLI to probe Cyberdeck Pad hybrid GATT over BlueZ"
 name = "cyberdeck-probe"
 path = "src/main.rs"
 
+[[example]]
+name = "write_dongle_slots"
+path = "examples/write_dongle_slots.rs"
+
 [dependencies]
 cyberdeck-ble = { path = "../crates/cyberdeck-ble" }
+cyberdeck-dongle = { path = "../crates/cyberdeck-dongle" }
 bluer = { workspace = true }
 tokio = { workspace = true }
 clap = { workspace = true }

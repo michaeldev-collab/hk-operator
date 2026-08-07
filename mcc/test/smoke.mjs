@@ -23,11 +23,11 @@ function check(name, cond) {
   }
 }
 
-console.log("HK Operator MCC — smoke test\n");
+console.log("3DL Macro Command Center — smoke test\n");
 
 // 1. constants
 check("6 categories defined", CATEGORIES.length === 6);
-check("6 action types defined", ACTION_TYPES.length === 6);
+check("8 action types defined", ACTION_TYPES.length === 8);
 
 // 2. validation: good action
 const good = { name: "x", category: "Terminal Commands", type: "command", value: "ls" };
@@ -72,19 +72,15 @@ check(
   "SEED_PAD_BINDINGS names exist in SEED_ACTIONS",
   Object.values(SEED_PAD_BINDINGS).every((n) => seedNames.has(n))
 );
-check(
-  "SEED_PAD_BINDINGS is empty or valid in public seed",
-  Object.keys(SEED_PAD_BINDINGS).length === 0 ||
-    ["2-0", "2-1", "2-2"].every((k) => SEED_PAD_BINDINGS[k])
-);
+check("SEED_PAD_BINDINGS has preset-3 launcher keys", ["2-0", "2-1", "2-2"].every((k) => SEED_PAD_BINDINGS[k]));
 
 // 8. filtering (assertions guard against vacuous pass on empty results)
 const sample = SEED_ACTIONS.map((s) => normalizeAction(s));
-const byCat = filterActions(sample, { category: "Prompts" });
-check("filter by category works", byCat.length > 0 && byCat.every((a) => a.category === "Prompts"));
+const byCat = filterActions(sample, { category: "URLs" });
+check("filter by category works", byCat.length > 0 && byCat.every((a) => a.category === "URLs"));
 const byType = filterActions(sample, { type: "command" });
 check("filter by type works", byType.length > 0 && byType.every((a) => a.type === "command"));
-const byQuery = filterActions(sample, { query: "git" });
+const byQuery = filterActions(sample, { query: "docker" });
 check(
   "text query returns only matches that contain the term",
   byQuery.length > 0 &&
@@ -92,7 +88,7 @@ check(
       [a.name, a.description, a.value, a.category, a.type, (a.tags || []).join(" ")]
         .join(" ")
         .toLowerCase()
-        .includes("git")
+        .includes("docker")
     )
 );
 check("nonsense query returns none", filterActions(sample, { query: "zzqqx-nothing" }).length === 0);

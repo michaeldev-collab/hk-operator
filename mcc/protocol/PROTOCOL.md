@@ -1,11 +1,9 @@
-# Cyberpad BLE protocol (host side)
+# Cyberdeck Pad BLE protocol (host side)
 
-Canonical UUIDs and binary layout for HK Operator MCC / probe CLI talking to
-**Cyberpad**.
+Canonical UUIDs and binary layout for Macro Command Center / probe CLI.
 
-Firmware: [`../../firmware/`](../../firmware/)  
-Info string (v0.2+): `Cyberdeck Pad Hybrid v0.2.0` *(compatibility identifier —
-do not change without coordinating all bonded hosts)*
+Firmware: `/run/media/stitch/data3/Operating/pi-iot/esp32/ble-hid-hotkeys/ble-hid-hotkey-ble-config/`  
+Info string (v0.2+): `Cyberdeck Pad Hybrid v0.2.0`
 
 ## UUIDs
 | Role | UUID |
@@ -16,8 +14,7 @@ do not change without coordinating all bonded hosts)*
 | Info | `c0de0004-3d17-4a00-8000-00805f9b34fb` |
 
 ## Device name
-BLE advertised name: **`Cyberdeck Pad`** *(legacy / compatibility — Cyberpad
-does not rename the advertise string in this release; pair as that keyboard name)*
+BLE advertised name: **`Cyberdeck Pad`**
 
 ## Presets & LEDs
 B1 cycles presets **1..6**. Three LEDs encode the active preset:
@@ -44,8 +41,7 @@ B1 cycles presets **1..6**. Three LEDs encode the active preset:
 Prefer MTU ≥ 517 on both ends (firmware requests 517).
 
 ## MacroEvent notify
-2 bytes: `[preset_idx u8, action_idx u8]` (zero-based).
-Hosts **must** ignore events outside `preset 0..=5` and `action 0..=2`.
+2 bytes: `[preset_idx u8, action_idx u8]` (zero-based, preset may be `0..=5`).
 
 ## Host connection rule
 Do **not** open a second BLE link. Use BlueZ against the device already bonded/connected as HID keyboard.

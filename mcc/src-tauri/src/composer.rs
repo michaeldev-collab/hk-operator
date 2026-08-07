@@ -26,7 +26,7 @@ pub fn default_reset_on() -> Vec<String> {
     vec!["explicitClear".into(), "space".into()]
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ComposerConfig {
     pub commands: Vec<String>,
@@ -273,7 +273,8 @@ mod tests {
         let c = cfg(&["/a", "/b"]);
         let t0 = Instant::now();
         note_composer_tap("ai", &c, &mut rt, t0, 400).unwrap();
-        let out = note_composer_tap("ai", &c, &mut rt, t0 + Duration::from_millis(500), 400).unwrap();
+        let out =
+            note_composer_tap("ai", &c, &mut rt, t0 + Duration::from_millis(500), 400).unwrap();
         assert_eq!(out, TapOutcome::Arming);
         assert!(!rt.picking.get("ai").copied().unwrap_or(false));
     }

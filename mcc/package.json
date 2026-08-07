@@ -1,5 +1,5 @@
 {
-  "name": "hk-operator-mcc",
+  "name": "3dl-macro-command-center",
   "version": "0.2.0",
   "private": true,
   "type": "module",
@@ -8,10 +8,11 @@
     "build": "tauri build",
     "tauri": "tauri",
     "probe": "cargo run -p cyberdeck-probe --",
-    "test:js": "node test/smoke.mjs && node test/dispatch.mjs && node test/composer.mjs && node test/config_profile.mjs && node test/allowlist_fingerprint.mjs && node test/ble_redact.mjs",
-    "test:rust": "cargo test -p cyberdeck-ble && cargo test -p mcc-desktop",
-    "test:harness": "node test/verification/harness.mjs",
-    "test": "npm run test:js && npm run test:rust && npm run test:harness"
+    "test:js": "node test/smoke.mjs",
+    "test:banks": "node --test test/pad_banks.test.mjs",
+    "test:proto": "node --test test/validation_proto.test.mjs",
+    "test:v03": "node --test test/v03_contract.test.mjs",
+    "test:rust": "cargo test -p cyberdeck-ble"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2"

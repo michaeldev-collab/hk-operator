@@ -1,5 +1,5 @@
 /**
- * Minimal base64 encode/decode for CDC slot payloads (486 bytes → ~648 chars).
+ * Minimal base64 encode/decode for CDC slot payloads (487 bytes -> 652 chars).
  */
 #pragma once
 
@@ -43,22 +43,25 @@ static inline int cpad_b64_decode(const char *in, size_t in_len, uint8_t *out,
   if (in_len % 4 != 0) return -1;
   size_t o = 0;
   for (size_t i = 0; i < in_len; i += 4) {
+    const bool pad2 = in[i + 2] == '=';
+    const bool pad3 = in[i + 3] == '=';
+    if ((pad2 && !pad3) || ((pad2 || pad3) && i + 4 != in_len)) return -1;
     int a = cpad_b64_index(in[i]);
     int b = cpad_b64_index(in[i + 1]);
-    int c = in[i + 2] == '=' ? 0 : cpad_b64_index(in[i + 2]);
-    int d = in[i + 3] == '=' ? 0 : cpad_b64_index(in[i + 3]);
-    if (a < 0 || b < 0 || (in[i + 2] != '=' && c < 0) ||
-        (in[i + 3] != '=' && d < 0))
+    int c = pad2 ? 0 : cpad_b64_index(in[i + 2]);
+    int d = pad3 ? 0 : cpad_b64_index(in[i + 3]);
+    if (a < 0 || b < 0 || (!pad2 && c < 0) || (!pad3 && d < 0) ||
+        (pad2 && (b & 0x0f) != 0) || (pad3 && !pad2 && (c & 0x03) != 0))
       return -1;
     uint32_t n = ((uint32_t)a << 18) | ((uint32_t)b << 12) | ((uint32_t)c << 6) |
                  (uint32_t)d;
     if (o >= out_cap) return -1;
     out[o++] = (uint8_t)((n >> 16) & 0xff);
-    if (in[i + 2] != '=') {
+    if (!pad2) {
       if (o >= out_cap) return -1;
       out[o++] = (uint8_t)((n >> 8) & 0xff);
     }
-    if (in[i + 3] != '=') {
+    if (!pad3) {
       if (o >= out_cap) return -1;
       out[o++] = (uint8_t)(n & 0xff);
     }

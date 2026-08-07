@@ -2,14 +2,14 @@
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
-use cyberdeck_ble::{
-    pad_status_for_log, redact_ble_address, CyberdeckPad, HotkeySlot, PadSlots, MODE_HID,
-    MODE_MACRO,
-};
+use cyberdeck_ble::{CyberdeckPad, HotkeySlot, PadSlots, MODE_HID, MODE_MACRO};
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
-#[command(name = "cyberdeck-probe", about = "Probe Cyberdeck Pad hybrid GATT via BlueZ")]
+#[command(
+    name = "cyberdeck-probe",
+    about = "Probe Cyberdeck Pad hybrid GATT via BlueZ"
+)]
 struct Cli {
     /// Bluetooth address (optional; otherwise find by name "Cyberdeck Pad")
     #[arg(long, global = true)]
@@ -25,15 +25,22 @@ enum Cmd {
     Status,
     /// Read Info characteristic
     Info,
-    /// Read and print all 18 slots as JSON
-    ReadSlots,
-    /// Write slots from a JSON file (array of 18 HotkeySlot objects)
+    /// Read and print one bank's 18 slots as JSON
+    ReadSlots {
+        #[arg(long, default_value_t = 0)]
+        bank: u8,
+    },
+    /// Write one bank from a JSON file (array of 18 HotkeySlot objects)
     WriteSlots {
+        #[arg(long, default_value_t = 0)]
+        bank: u8,
         #[arg(value_name = "FILE")]
         file: PathBuf,
     },
     /// Set one slot: --preset 0 --action 0 --mode hid|macro --mod 0x01 --key 0x28 --label Enter
     SetSlot {
+        #[arg(long, default_value_t = 0)]
+        bank: u8,
         #[arg(long)]
         preset: usize,
         #[arg(long)]
@@ -92,7 +99,7 @@ async fn main() -> Result<()> {
             } {
                 Ok(pad) => {
                     let st = pad.status().await?;
-                    println!("{}", serde_json::to_string_pretty(&pad_status_for_log(&st))?);
+                    println!("{}", serde_json::to_string_pretty(&st)?);
                 }
                 Err(e) => {
                     println!("pad: not found ({e})");
@@ -104,12 +111,16 @@ async fn main() -> Result<()> {
             let pad = open_pad(&cli.address).await?;
             println!("{}", pad.read_info().await?);
         }
-        Cmd::ReadSlots => {
+        Cmd::ReadSlots { bank } => {
             let pad = open_pad(&cli.address).await?;
-            let slots = pad.read_slots().await?;
+            let slots = if bank == 0 {
+                pad.read_slots().await?
+            } else {
+                pad.read_slots_for_bank(bank).await?
+            };
             println!("{}", serde_json::to_string_pretty(&slots.slots)?);
         }
-        Cmd::WriteSlots { file } => {
+        Cmd::WriteSlots { bank, file } => {
             let pad = open_pad(&cli.address).await?;
             let text = std::fs::read_to_string(&file)
                 .with_context(|| format!("read {}", file.display()))?;
@@ -118,10 +129,15 @@ async fn main() -> Result<()> {
                 bail!("expected 18 slots, got {}", list.len());
             }
             let slots = PadSlots { slots: list };
-            pad.write_slots(&slots).await?;
-            println!("wrote 18 slots ok");
+            if bank == 0 {
+                pad.write_slots(&slots).await?;
+            } else {
+                pad.write_slots_for_bank(bank, &slots).await?;
+            }
+            println!("wrote bank {bank} (18 slots) ok");
         }
         Cmd::SetSlot {
+            bank,
             preset,
             action,
             mode,
@@ -130,7 +146,11 @@ async fn main() -> Result<()> {
             label,
         } => {
             let pad = open_pad(&cli.address).await?;
-            let mut slots = pad.read_slots().await?;
+            let mut slots = if bank == 0 {
+                pad.read_slots().await?
+            } else {
+                pad.read_slots_for_bank(bank).await?
+            };
             let mode_u8 = match mode.to_lowercase().as_str() {
                 "macro" | "1" => MODE_MACRO,
                 _ => MODE_HID,
@@ -143,20 +163,24 @@ async fn main() -> Result<()> {
                 label,
             };
             let printed = serde_json::to_string(slot)?;
-            pad.write_slots(&slots).await?;
-            println!("set preset={preset} action={action} -> {printed}");
+            if bank == 0 {
+                pad.write_slots(&slots).await?;
+            } else {
+                pad.write_slots_for_bank(bank, &slots).await?;
+            }
+            println!("set bank={bank} preset={preset} action={action} -> {printed}");
         }
         Cmd::Listen => {
             let pad = open_pad(&cli.address).await?;
             println!(
                 "listening for MacroEvent on {} … (press a MACRO-mode button)",
-                redact_ble_address(&pad.address.to_string())
+                pad.address
             );
             let mut rx = pad.subscribe_macro_events().await?;
             while let Some(ev) = rx.recv().await {
                 println!(
-                    "MacroEvent preset={} action={}  (binding key \"{}-{}\")",
-                    ev.preset, ev.action, ev.preset, ev.action
+                    "MacroEvent bank={} preset={} action={}  (binding key \"{}-{}-{}\")",
+                    ev.bank, ev.preset, ev.action, ev.bank, ev.preset, ev.action
                 );
             }
         }

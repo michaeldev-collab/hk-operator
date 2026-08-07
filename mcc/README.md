@@ -1,44 +1,35 @@
-# HK Operator — Mission Control Center (MCC)
+# 3DL Macro Command Center
 
-Desktop companion for **Cyberpad** (ESP32-C6) plus a local action catalog
-(prompts, URLs, commands, paths).
+Pad-first companion for the **Cyberdeck Pad** (ESP32 BLE HID hotkeys) plus a
+local action catalog (prompts, URLs, commands, paths).
 
-Validated host transports:
-- **Preferred** — Cyberpad C6 → S3 dongle → USB HID/CDC → MCC (BlueZ blocked on the pad).
-- **Fallback** — Cyberpad C6 → direct BLE HID/GATT → BlueZ/MCC.
+Hybrid model:
+- **HID slots** — pad types keystrokes itself (works with this app closed).
+- **Macro slots** — pad notifies this desktop app over custom GATT on the
+  **same** BlueZ link as the keyboard; the app runs the real action.
 
-Hybrid behavior:
-- **HID slots** — keystrokes reach the host (via S3 USB HID or direct BLE HID); works with MCC closed for typing.
-- **Macro / slots control** — MCC runs richer actions; slot sync prefers dongle CDC when linked, else BlueZ GATT.
+Firmware foundation:
+`/run/media/stitch/data3/Operating/pi-iot/esp32/ble-hid-hotkeys/ble-hid-hotkey-ble-config/`
 
-Firmware: [`../firmware/`](../firmware/)  
-Protocol: [`protocol/PROTOCOL.md`](protocol/PROTOCOL.md)  
-Architecture: [`../docs/architecture.md`](../docs/architecture.md)  
-Hardware: [`../docs/hardware-v1.md`](../docs/hardware-v1.md)
+Protocol: [`protocol/PROTOCOL.md`](protocol/PROTOCOL.md)
 
 ## Stack
 | Layer | Choice |
 |-------|--------|
 | Desktop | Tauri 2 + Rust (`bluer` / BlueZ) |
 | UI | Existing vanilla HTML/CSS/JS in `src/` |
-| Probe CLI | `cyberdeck-probe` (`cargo run -p cyberdeck-probe`) *(crate name kept for compatibility)* |
+| Probe CLI | `cyberdeck-probe` (`cargo run -p cyberdeck-probe`) |
 | Browser fallback | `python3 -m http.server` — catalog only, no BLE |
 
 ## Desktop app
 ```bash
-cd ~/hk-operator/mcc
+cd ~/3dl-macro-command-center
 npm install
 npm run dev          # Tauri + UI
 ```
 
-Persistence: `~/.config/hk-operator/store.json`
-(actions + `padBindings` + `composers` + `allowedCommands`).
-
-**Slash composer:** bind type `composer` (value `ai`) to a pad key. **Double-tap**
-starts or rotates the live slash; **Space** commits; double-tap again stacks the
-next command. New loop = UI **Reset cycle** or a `composer-reset` action (no idle
-timeout, Esc left alone for Cursor). The writer captures the focused window at
-session start and aborts (no Ctrl+A/Delete) if focus moves away mid-compose.
+Persistence: `~/.config/3dl-macro-command-center/store.json`
+(actions + `padBindings` + `allowedCommands`).
 
 **Commands never run silently** — click **Allow shell** (or confirm on first Run).
 
@@ -50,21 +41,17 @@ cargo run -p cyberdeck-probe -- read-slots
 cargo run -p cyberdeck-probe -- listen
 ```
 
-**Dongle mode:** keep the pad blocked/disconnected in BlueZ so the S3 bridge owns
-the BLE central slot. MCC Refresh should show `via S3 dongle` when linked.
-
-**Direct BLE mode:** pair Cyberpad as a Bluetooth keyboard first. The OS may show
-the legacy advertised name **`Cyberdeck Pad`**. Probe/MCC talk GATT on that
-existing bond — they do not open a second BLE link.
+Pair **Cyberdeck Pad** as a Bluetooth keyboard first. The probe/app talk GATT on
+that existing connection — they do not open a second BLE link.
 
 ## Firmware (compile only until you approve flash)
 ```bash
 arduino-cli compile --fqbn esp32:esp32:esp32c6 \
-  --libraries ~/Arduino/libraries \
-  ../firmware
+  --libraries /run/media/stitch/data3/Operating/pi-iot/libraries \
+  /run/media/stitch/data3/Operating/pi-iot/esp32/ble-hid-hotkeys/ble-hid-hotkey-ble-config
 ```
 
-Do **not** `upload` until the correct ESP32-C6 (Cyberpad) is on the serial port.
+Do **not** `upload` until the correct ESP32-C6 is on the serial port.
 
 WiFi config portal is optional (`-DENABLE_WIFI_FALLBACK=1`). Default hybrid build
 is BLE-only.
@@ -73,6 +60,19 @@ is BLE-only.
 ```bash
 cd src && python3 -m http.server 8000
 ```
+Open http://localhost:8000 — actions work (copy/open); pad panel is hidden.
 
-## License
-MIT — see [`../LICENSE`](../LICENSE).
+## Tests
+```bash
+npm run test:js      # node test/smoke.mjs
+npm run test:rust    # cyberdeck-ble unit tests
+```
+
+## Layout
+```
+src/                 # UI (browser + Tauri frontendDist)
+src-tauri/           # Tauri shell + BLE/macro execution
+crates/cyberdeck-ble # BlueZ GATT helpers + slot pack/unpack
+probe/               # cyberdeck-probe CLI
+protocol/            # UUID + binary layout
+```

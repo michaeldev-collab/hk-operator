@@ -12,14 +12,51 @@ pub const SERVICE_UUID: &str = "c0de0001-3d17-4a00-8000-00805f9b34fb";
 pub const SLOTS_UUID: &str = "c0de0002-3d17-4a00-8000-00805f9b34fb";
 pub const MACRO_EVENT_UUID: &str = "c0de0003-3d17-4a00-8000-00805f9b34fb";
 pub const INFO_UUID: &str = "c0de0004-3d17-4a00-8000-00805f9b34fb";
+pub const BANK_SEL_UUID: &str = "c0de0005-3d17-4a00-8000-00805f9b34fb";
 
 pub const MODE_HID: u8 = 0;
 pub const MODE_MACRO: u8 = 1;
 pub const SLOT_BYTES: usize = 27;
+pub const SLOT_LABEL_BYTES: usize = 24;
+pub const SLOT_LABEL_MAX_BYTES: usize = SLOT_LABEL_BYTES - 1;
 pub const PRESET_COUNT: usize = 6;
 pub const ACTION_COUNT: usize = 3;
 pub const SLOT_COUNT: usize = PRESET_COUNT * ACTION_COUNT; // 18
 pub const SLOTS_BYTES: usize = SLOT_BYTES * SLOT_COUNT; // 486
+pub const BANK_COUNT: usize = 5;
+pub const SLOTS_PAGE_BYTES: usize = 1 + SLOTS_BYTES; // 487
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InfoProtocol {
+    LegacyV02,
+    BankedV03Plus,
+}
+
+fn info_protocol(info: &str) -> Option<InfoProtocol> {
+    let version = info.strip_prefix("Cyberdeck Pad Hybrid v")?;
+    let mut parts = version.split('.');
+    let major = parts.next().and_then(|v| v.parse::<u32>().ok())?;
+    let minor = parts.next().and_then(|v| v.parse::<u32>().ok())?;
+    let _patch = parts.next().and_then(|v| v.parse::<u32>().ok())?;
+    if parts.next().is_some() {
+        return None;
+    }
+    if major == 0 && minor == 2 {
+        Some(InfoProtocol::LegacyV02)
+    } else if major == 0 && minor == 3 {
+        Some(InfoProtocol::BankedV03Plus)
+    } else {
+        None
+    }
+}
+
+pub fn info_supports_banks(info: &str) -> bool {
+    info_protocol(info) == Some(InfoProtocol::BankedV03Plus)
+}
+
+pub fn info_protocol_compatible(info: &str) -> bool {
+    info_protocol(info).is_some()
+}
 
 #[derive(Debug, Error)]
 pub enum BleError {
@@ -31,10 +68,24 @@ pub enum BleError {
     ServiceMissing(String),
     #[error("characteristic {0} missing")]
     CharMissing(String),
+    #[error("slots payload length {got}, expected {expected}")]
+    BadPayloadLen { got: usize, expected: usize },
     #[error("slots payload length {got}, expected {SLOTS_BYTES}")]
     BadSlotsLen { got: usize },
     #[error("invalid slot index")]
     BadIndex,
+    #[error("invalid bank {0}, expected 0..{max}", max = BANK_COUNT - 1)]
+    BadBank(u8),
+    #[error("slot label contains an embedded NUL")]
+    LabelContainsNul,
+    #[error("slot label is missing its NUL terminator")]
+    LabelMissingTerminator,
+    #[error("slot label has nonzero bytes after its NUL terminator")]
+    LabelNonzeroPadding,
+    #[error("slot label is not valid UTF-8: {0}")]
+    LabelInvalidUtf8(#[source] std::str::Utf8Error),
+    #[error("protocol mismatch: {0}")]
+    ProtocolMismatch(String),
     #[error("{0}")]
     Msg(String),
 }
@@ -48,7 +99,7 @@ pub struct HotkeySlot {
 }
 
 impl HotkeySlot {
-    pub fn pack(&self) -> [u8; SLOT_BYTES] {
+    pub fn pack(&self) -> Result<[u8; SLOT_BYTES], BleError> {
         let mut buf = [0u8; SLOT_BYTES];
         buf[0] = if self.mode == MODE_MACRO {
             MODE_MACRO
@@ -57,19 +108,32 @@ impl HotkeySlot {
         };
         buf[1] = self.r#mod;
         buf[2] = self.key;
-        let bytes = self.label.as_bytes();
-        let n = bytes.len().min(23);
-        buf[3..3 + n].copy_from_slice(&bytes[..n]);
-        buf
+        if self.label.contains('\0') {
+            return Err(BleError::LabelContainsNul);
+        }
+        let mut end = self.label.len().min(SLOT_LABEL_MAX_BYTES);
+        while !self.label.is_char_boundary(end) {
+            end -= 1;
+        }
+        buf[3..3 + end].copy_from_slice(&self.label.as_bytes()[..end]);
+        Ok(buf)
     }
 
     pub fn unpack(buf: &[u8]) -> Result<Self, BleError> {
-        if buf.len() < SLOT_BYTES {
+        if buf.len() != SLOT_BYTES {
             return Err(BleError::BadSlotsLen { got: buf.len() });
         }
         let label_raw = &buf[3..SLOT_BYTES];
-        let end = label_raw.iter().position(|&b| b == 0).unwrap_or(label_raw.len());
-        let label = String::from_utf8_lossy(&label_raw[..end]).into_owned();
+        let end = label_raw
+            .iter()
+            .position(|&b| b == 0)
+            .ok_or(BleError::LabelMissingTerminator)?;
+        if label_raw[end + 1..].iter().any(|&b| b != 0) {
+            return Err(BleError::LabelNonzeroPadding);
+        }
+        let label = std::str::from_utf8(&label_raw[..end])
+            .map_err(BleError::LabelInvalidUtf8)?
+            .to_owned();
         Ok(Self {
             mode: buf[0],
             r#mod: buf[1],
@@ -111,7 +175,7 @@ impl PadSlots {
         }
         let mut out = [0u8; SLOTS_BYTES];
         for (i, slot) in self.slots.iter().enumerate() {
-            let packed = slot.pack();
+            let packed = slot.pack()?;
             let start = i * SLOT_BYTES;
             out[start..start + SLOT_BYTES].copy_from_slice(&packed);
         }
@@ -119,7 +183,7 @@ impl PadSlots {
     }
 
     pub fn unpack(buf: &[u8]) -> Result<Self, BleError> {
-        if buf.len() < SLOTS_BYTES {
+        if buf.len() != SLOTS_BYTES {
             return Err(BleError::BadSlotsLen { got: buf.len() });
         }
         let mut slots = Vec::with_capacity(SLOT_COUNT);
@@ -130,26 +194,74 @@ impl PadSlots {
         Ok(Self { slots })
     }
 
+    pub fn pack_bank(&self, bank: u8) -> Result<[u8; SLOTS_PAGE_BYTES], BleError> {
+        if bank as usize >= BANK_COUNT {
+            return Err(BleError::BadBank(bank));
+        }
+        let packed = self.pack()?;
+        let mut out = [0u8; SLOTS_PAGE_BYTES];
+        out[0] = bank;
+        out[1..].copy_from_slice(&packed);
+        Ok(out)
+    }
+
+    pub fn unpack_bank(buf: &[u8], expected_bank: u8) -> Result<Self, BleError> {
+        if expected_bank as usize >= BANK_COUNT {
+            return Err(BleError::BadBank(expected_bank));
+        }
+        if buf.len() != SLOTS_PAGE_BYTES {
+            return Err(BleError::BadPayloadLen {
+                got: buf.len(),
+                expected: SLOTS_PAGE_BYTES,
+            });
+        }
+        if buf[0] != expected_bank {
+            return Err(BleError::ProtocolMismatch(format!(
+                "slots page bank {} while selected {expected_bank}",
+                buf[0]
+            )));
+        }
+        Self::unpack(&buf[1..])
+    }
+
     pub fn binding_key(preset: usize, action: usize) -> String {
         format!("{preset}-{action}")
     }
+
+    pub fn bank_binding_key(bank: usize, preset: usize, action: usize) -> String {
+        format!("{bank}-{preset}-{action}")
+    }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MacroEvent {
+    pub bank: u8,
     pub preset: u8,
     pub action: u8,
 }
 
 impl MacroEvent {
     pub fn from_bytes(buf: &[u8]) -> Option<Self> {
-        if buf.len() < 2 {
+        let event = match buf {
+            [preset, action] => Self {
+                bank: 0,
+                preset: *preset,
+                action: *action,
+            },
+            [bank, preset, action] => Self {
+                bank: *bank,
+                preset: *preset,
+                action: *action,
+            },
+            _ => return None,
+        };
+        if event.bank as usize >= BANK_COUNT
+            || event.preset as usize >= PRESET_COUNT
+            || event.action as usize >= ACTION_COUNT
+        {
             return None;
         }
-        Some(Self {
-            preset: buf[0],
-            action: buf[1],
-        })
+        Some(event)
     }
 }
 
@@ -167,6 +279,16 @@ pub struct PadStatus {
     /// will not fight the S3 dongle for the pad's single BLE link.
     #[serde(default)]
     pub bluez_blocked: Option<bool>,
+    /// Transport protocol compatibility. `Some(false)` is a hard mismatch;
+    /// callers must not fall through to a competing transport.
+    #[serde(default)]
+    pub protocol_compatible: Option<bool>,
+    #[serde(default)]
+    pub slots_ready: Option<bool>,
+    #[serde(default)]
+    pub macro_ready: Option<bool>,
+    #[serde(default)]
+    pub selected_bank: Option<u8>,
 }
 
 pub struct CyberdeckPad {
@@ -239,6 +361,12 @@ impl CyberdeckPad {
         } else {
             None
         };
+        let protocol_compatible = info.as_deref().map(info_protocol_compatible);
+        let selected_bank = match info.as_deref().and_then(info_protocol) {
+            Some(InfoProtocol::BankedV03Plus) => self.read_selected_bank().await.ok(),
+            Some(InfoProtocol::LegacyV02) => Some(0),
+            None => None,
+        };
         Ok(PadStatus {
             address: self.address.to_string(),
             name,
@@ -247,6 +375,10 @@ impl CyberdeckPad {
             info,
             transport: Some("bluez".into()),
             bluez_blocked,
+            protocol_compatible,
+            slots_ready: None,
+            macro_ready: None,
+            selected_bank,
         })
     }
 
@@ -289,13 +421,26 @@ impl CyberdeckPad {
 
     pub async fn read_info(&self) -> Result<String, BleError> {
         let ch = self
-            .find_char(Uuid::parse_str(SERVICE_UUID).unwrap(), Uuid::parse_str(INFO_UUID).unwrap())
+            .find_char(
+                Uuid::parse_str(SERVICE_UUID).unwrap(),
+                Uuid::parse_str(INFO_UUID).unwrap(),
+            )
             .await?;
         let val = ch.read().await?;
         Ok(String::from_utf8_lossy(&val).into_owned())
     }
 
     pub async fn read_slots(&self) -> Result<PadSlots, BleError> {
+        let info = self.read_info().await?;
+        match info_protocol(&info) {
+            Some(InfoProtocol::BankedV03Plus) => return self.read_slots_for_bank(0).await,
+            Some(InfoProtocol::LegacyV02) => {}
+            None => {
+                return Err(BleError::ProtocolMismatch(format!(
+                    "unsupported Info value {info:?}"
+                )))
+            }
+        }
         let ch = self
             .find_char(
                 Uuid::parse_str(SERVICE_UUID).unwrap(),
@@ -306,7 +451,59 @@ impl CyberdeckPad {
         PadSlots::unpack(&val)
     }
 
+    pub async fn read_selected_bank(&self) -> Result<u8, BleError> {
+        let ch = self
+            .find_char(
+                Uuid::parse_str(SERVICE_UUID).unwrap(),
+                Uuid::parse_str(BANK_SEL_UUID).unwrap(),
+            )
+            .await?;
+        let value = ch.read().await?;
+        if value.len() != 1 || value[0] as usize >= BANK_COUNT {
+            return Err(BleError::ProtocolMismatch(format!(
+                "BankSel read {:?}, expected one byte in 0..{}",
+                value,
+                BANK_COUNT - 1
+            )));
+        }
+        Ok(value[0])
+    }
+
+    pub async fn subscribe_bank_events(&self) -> Result<tokio::sync::mpsc::Receiver<u8>, BleError> {
+        use futures_util::StreamExt;
+        let ch = self
+            .find_char(
+                Uuid::parse_str(SERVICE_UUID).unwrap(),
+                Uuid::parse_str(BANK_SEL_UUID).unwrap(),
+            )
+            .await?;
+        let stream = ch.notify().await?;
+        let (tx, rx) = tokio::sync::mpsc::channel(16);
+        tokio::spawn(async move {
+            let mut stream = std::pin::pin!(stream);
+            while let Some(raw) = stream.as_mut().next().await {
+                if raw.len() == 1
+                    && (raw[0] as usize) < BANK_COUNT
+                    && tx.send(raw[0]).await.is_err()
+                {
+                    break;
+                }
+            }
+        });
+        Ok(rx)
+    }
+
     pub async fn write_slots(&self, slots: &PadSlots) -> Result<(), BleError> {
+        let info = self.read_info().await?;
+        match info_protocol(&info) {
+            Some(InfoProtocol::BankedV03Plus) => return self.write_slots_for_bank(0, slots).await,
+            Some(InfoProtocol::LegacyV02) => {}
+            None => {
+                return Err(BleError::ProtocolMismatch(format!(
+                    "unsupported Info value {info:?}"
+                )))
+            }
+        }
         let packed = slots.pack()?;
         let ch = self
             .find_char(
@@ -318,11 +515,67 @@ impl CyberdeckPad {
         Ok(())
     }
 
+    async fn select_bank(&self, bank: u8) -> Result<(), BleError> {
+        if bank as usize >= BANK_COUNT {
+            return Err(BleError::BadBank(bank));
+        }
+        let ch = self
+            .find_char(
+                Uuid::parse_str(SERVICE_UUID).unwrap(),
+                Uuid::parse_str(BANK_SEL_UUID).unwrap(),
+            )
+            .await?;
+        ch.write(&[bank]).await?;
+        let selected = ch.read().await?;
+        if selected.as_slice() != [bank] {
+            return Err(BleError::ProtocolMismatch(format!(
+                "BankSel readback {:?}, expected [{bank}]",
+                selected
+            )));
+        }
+        Ok(())
+    }
+
+    pub async fn read_slots_for_bank(&self, bank: u8) -> Result<PadSlots, BleError> {
+        self.select_bank(bank).await?;
+        let ch = self
+            .find_char(
+                Uuid::parse_str(SERVICE_UUID).unwrap(),
+                Uuid::parse_str(SLOTS_UUID).unwrap(),
+            )
+            .await?;
+        let val = ch.read().await?;
+        PadSlots::unpack_bank(&val, bank)
+    }
+
+    pub async fn write_slots_for_bank(&self, bank: u8, slots: &PadSlots) -> Result<(), BleError> {
+        self.select_bank(bank).await?;
+        let packed = slots.pack_bank(bank)?;
+        let ch = self
+            .find_char(
+                Uuid::parse_str(SERVICE_UUID).unwrap(),
+                Uuid::parse_str(SLOTS_UUID).unwrap(),
+            )
+            .await?;
+        ch.write(&packed).await?;
+        let verify = ch.read().await?;
+        if verify.as_slice() != packed {
+            return Err(BleError::ProtocolMismatch(format!(
+                "bank {bank} write readback mismatch"
+            )));
+        }
+        Ok(())
+    }
+
     pub async fn diagnose_notify(&self, wait_secs: u64) -> Result<Option<Vec<u8>>, BleError> {
         use futures_util::StreamExt;
 
         self.ensure_connected().await?;
-        println!("device {} connected={}", self.address, self.device.is_connected().await?);
+        println!(
+            "device {} connected={}",
+            self.address,
+            self.device.is_connected().await?
+        );
         let svc = Uuid::parse_str(SERVICE_UUID).unwrap();
         let evt = Uuid::parse_str(MACRO_EVENT_UUID).unwrap();
         for service in self.device.services().await? {
@@ -374,6 +627,17 @@ impl CyberdeckPad {
     ) -> Result<tokio::sync::mpsc::Receiver<MacroEvent>, BleError> {
         use futures_util::StreamExt;
 
+        let info = self.read_info().await?;
+        let expected_len = match info_protocol(&info) {
+            Some(InfoProtocol::LegacyV02) => 2,
+            Some(InfoProtocol::BankedV03Plus) => 3,
+            None => {
+                return Err(BleError::ProtocolMismatch(format!(
+                    "unsupported Info value {info:?}"
+                )))
+            }
+        };
+
         let ch = self
             .find_char(
                 Uuid::parse_str(SERVICE_UUID).unwrap(),
@@ -387,6 +651,9 @@ impl CyberdeckPad {
         tokio::spawn(async move {
             let mut notify = std::pin::pin!(notify);
             while let Some(chunk) = notify.as_mut().next().await {
+                if chunk.len() != expected_len {
+                    break;
+                }
                 if let Some(ev) = MacroEvent::from_bytes(&chunk) {
                     if tx.send(ev).await.is_err() {
                         break;
@@ -411,12 +678,69 @@ mod tests {
             key: 0x28,
             label: "Enter".into(),
         };
-        let packed = slot.pack();
+        let packed = slot.pack().unwrap();
         let back = HotkeySlot::unpack(&packed).unwrap();
         assert_eq!(back.mode, MODE_MACRO);
         assert_eq!(back.r#mod, 0x01);
         assert_eq!(back.key, 0x28);
         assert_eq!(back.label, "Enter");
+    }
+
+    #[test]
+    fn label_pack_truncates_at_utf8_code_point_boundary() {
+        let exact = HotkeySlot {
+            mode: MODE_HID,
+            r#mod: 0,
+            key: 0,
+            label: format!("{}💡", "a".repeat(19)),
+        };
+        let exact_back = HotkeySlot::unpack(&exact.pack().unwrap()).unwrap();
+        assert_eq!(exact_back.label, exact.label);
+        assert_eq!(exact_back.label.len(), SLOT_LABEL_MAX_BYTES);
+
+        let truncated = HotkeySlot {
+            label: format!("{}💡", "a".repeat(20)),
+            ..exact
+        };
+        let truncated_back = HotkeySlot::unpack(&truncated.pack().unwrap()).unwrap();
+        assert_eq!(truncated_back.label, "a".repeat(20));
+        assert!(truncated_back.label.len() <= SLOT_LABEL_MAX_BYTES);
+    }
+
+    #[test]
+    fn label_pack_rejects_embedded_nul() {
+        let slot = HotkeySlot {
+            mode: MODE_HID,
+            r#mod: 0,
+            key: 0,
+            label: "before\0after".into(),
+        };
+        assert!(matches!(slot.pack(), Err(BleError::LabelContainsNul)));
+    }
+
+    #[test]
+    fn label_unpack_rejects_noncanonical_wire_data() {
+        let mut missing_terminator = [0u8; SLOT_BYTES];
+        missing_terminator[3..].fill(b'a');
+        assert!(matches!(
+            HotkeySlot::unpack(&missing_terminator),
+            Err(BleError::LabelMissingTerminator)
+        ));
+
+        let mut nonzero_padding = [0u8; SLOT_BYTES];
+        nonzero_padding[3] = b'a';
+        nonzero_padding[5] = b'b';
+        assert!(matches!(
+            HotkeySlot::unpack(&nonzero_padding),
+            Err(BleError::LabelNonzeroPadding)
+        ));
+
+        let mut invalid_utf8 = [0u8; SLOT_BYTES];
+        invalid_utf8[3] = 0xc3;
+        assert!(matches!(
+            HotkeySlot::unpack(&invalid_utf8),
+            Err(BleError::LabelInvalidUtf8(_))
+        ));
     }
 
     #[test]
@@ -436,5 +760,53 @@ mod tests {
         let back = PadSlots::unpack(&packed).unwrap();
         assert_eq!(back.slots.len(), SLOT_COUNT);
         assert_eq!(back.slots[3].label, "s3");
+    }
+
+    #[test]
+    fn bank_page_roundtrip_is_self_describing() {
+        let slots = PadSlots {
+            slots: (0..SLOT_COUNT)
+                .map(|i| HotkeySlot {
+                    mode: MODE_HID,
+                    r#mod: 0,
+                    key: i as u8,
+                    label: format!("b2s{i}"),
+                })
+                .collect(),
+        };
+        let page = slots.pack_bank(2).unwrap();
+        assert_eq!(page.len(), SLOTS_PAGE_BYTES);
+        assert_eq!(page[0], 2);
+        assert_eq!(
+            PadSlots::unpack_bank(&page, 2).unwrap().slots[3].label,
+            "b2s3"
+        );
+        assert!(PadSlots::unpack_bank(&page, 1).is_err());
+        assert!(PadSlots::unpack(&page).is_err());
+    }
+
+    #[test]
+    fn macro_event_parses_exact_v02_and_v03_lengths() {
+        assert_eq!(MacroEvent::from_bytes(&[2, 1]).unwrap().bank, 0);
+        let event = MacroEvent::from_bytes(&[4, 5, 2]).unwrap();
+        assert_eq!((event.bank, event.preset, event.action), (4, 5, 2));
+        assert!(MacroEvent::from_bytes(&[0, 1, 2, 3]).is_none());
+        assert!(MacroEvent::from_bytes(&[5, 0, 0]).is_none());
+    }
+
+    #[test]
+    fn protocol_version_detection_is_conservative() {
+        assert!(info_supports_banks("Cyberdeck Pad Hybrid v0.3.0"));
+        assert!(info_supports_banks("Cyberdeck Pad Hybrid v0.3.99"));
+        assert!(!info_supports_banks("Cyberdeck Pad Hybrid v0.4.0"));
+        assert!(!info_supports_banks("Cyberdeck Pad Hybrid v1.0.0"));
+        assert!(!info_supports_banks("Cyberdeck Pad Hybrid v0.2.9"));
+        assert!(info_protocol_compatible("Cyberdeck Pad Hybrid v0.2.9"));
+        assert!(info_protocol_compatible("Cyberdeck Pad Hybrid v0.3.0"));
+        assert!(!info_protocol_compatible("Cyberdeck Pad Hybrid v0.1.9"));
+        assert!(!info_supports_banks("0.3.0"));
+        assert!(!info_supports_banks("Cyberdeck Pad Hybrid v0.3"));
+        assert!(!info_supports_banks("Cyberdeck Pad Hybrid v0.3.0 trailing"));
+        assert!(!info_supports_banks("garbage"));
     }
 }

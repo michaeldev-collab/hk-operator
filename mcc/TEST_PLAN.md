@@ -5,7 +5,7 @@ manual UI smoke test (5 minutes in a browser).
 
 ## 1. Automated logic smoke test
 ```bash
-cd hk-operator/mcc
+cd 3dl-macro-command-center
 node test/smoke.mjs
 ```
 **Covers:** constants, action validation (good + each failure mode), the URL
@@ -25,7 +25,7 @@ whitespace URL cases, and no-tags normalization (added after the review pass).
 ## 2. Manual UI smoke test
 Start the app:
 ```bash
-cd hk-operator/mcc/src
+cd 3dl-macro-command-center/src
 python3 -m http.server 8000
 # open http://localhost:8000
 ```
@@ -56,12 +56,11 @@ Run through these. Each should pass:
 ## 3. Reset to seed (if needed)
 In the browser console:
 ```js
-localStorage.removeItem("hk.operator.actions.v1"); location.reload();
+localStorage.removeItem("3dl.macro.actions.v1"); location.reload();
 ```
 
 ## Known limitations (not failures)
-- **Browser-only mode** is catalog + copy/open — it does not run shell commands.
-- **Desktop (Tauri) mode** can execute `command` / `path` actions only after explicit **Allow shell** (per-action allowlist).
-- Single browser/profile storage in browser mode; desktop uses `~/.config/hk-operator/`. Use Export/Import or Git sync to move data.
+- Commands are copy-only; the app never executes anything (by design).
+- Single browser/profile storage; use Export/Import to move data.
 - **Import is destructive** — it replaces all current actions (after a confirm
   prompt). Export first to back up.

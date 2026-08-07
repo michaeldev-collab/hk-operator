@@ -159,11 +159,7 @@ fn sleep_ms(ms: u64) {
 /// Best-effort active window id (KWin DBus, then xdotool).
 fn active_window_id() -> Option<String> {
     if let Ok(out) = Command::new("qdbus6")
-        .args([
-            "org.kde.KWin",
-            "/KWin",
-            "org.kde.KWin.activeWindow",
-        ])
+        .args(["org.kde.KWin", "/KWin", "org.kde.KWin.activeWindow"])
         .output()
     {
         if out.status.success() {
@@ -173,10 +169,7 @@ fn active_window_id() -> Option<String> {
             }
         }
     }
-    if let Ok(out) = Command::new("xdotool")
-        .args(["getactivewindow"])
-        .output()
-    {
+    if let Ok(out) = Command::new("xdotool").args(["getactivewindow"]).output() {
         if out.status.success() {
             let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
             if !s.is_empty() {
@@ -197,12 +190,7 @@ fn verify_focus(expected: &str) -> Result<(), String> {
 
 fn notify_focus_abort(detail: &str) {
     let _ = Command::new("notify-send")
-        .args([
-            "-a",
-            "MCC Pad",
-            "composer aborted",
-            detail,
-        ])
+        .args(["-a", "MCC Pad", "composer aborted", detail])
         .status();
 }
 
@@ -394,20 +382,14 @@ fn apply_once(
 }
 
 /// Reset field writer + composer FSM together (focus abort / session wipe).
-async fn abort_composition_session(
-    writer: &FieldWriter,
-    runtime: &Mutex<ComposerRuntime>,
-) {
+async fn abort_composition_session(writer: &FieldWriter, runtime: &Mutex<ComposerRuntime>) {
     writer.reset().await;
     let mut rt = runtime.lock().await;
     reset_composer_runtime(&mut rt, None);
     eprintln!("[composer-write] aborted — writer + composer runtime cleared");
 }
 
-pub async fn writer_loop(
-    writer: Arc<FieldWriter>,
-    runtime: Arc<Mutex<ComposerRuntime>>,
-) {
+pub async fn writer_loop(writer: Arc<FieldWriter>, runtime: Arc<Mutex<ComposerRuntime>>) {
     loop {
         writer.notify.notified().await;
         loop {
